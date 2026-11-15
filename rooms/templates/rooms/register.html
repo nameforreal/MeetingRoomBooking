@@ -1,0 +1,59 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+    <title>Регистрация — MeetingRoomBooking</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f3f5f9;
+            color: #1e293b;
+        }
+        main {
+            max-width: 420px;
+            margin: 70px auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+        }
+        input {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0 15px;
+        }
+        button {
+            background: #2563eb;
+            color: white;
+            border: 0;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .errorlist { color: #dc2626; }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Регистрация</h1>
+
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+
+        <button type="submit">
+            Зарегистрироваться
+        </button>
+    </form>
+
+    <p>
+        Уже есть аккаунт?
+        <a href="{% url 'login' %}">Войти</a>
+    </p>
+    <a href="{% url 'home' %}">На главную</a>
+</main>
+</body>
+</html>

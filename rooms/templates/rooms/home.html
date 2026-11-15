@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Бронирование переговорных</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f3f5f9;
+            margin: 0;
+            color: #1e293b;
+        }
+
+        header {
+            background: #1e293b;
+            color: white;
+            padding: 24px 8%;
+        }
+
+        main {
+            max-width: 1100px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .rooms {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
+        }
+
+        .room {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+        }
+
+        .room h2 {
+            margin-top: 0;
+        }
+
+        .badge {
+            color: #047857;
+            font-weight: bold;
+        }
+
+        .vip {
+            color: #b45309;
+        }
+
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>MeetingRoomBooking</h1>
+
+<nav>
+    {% if user.is_authenticated %}
+        <span>Привет, {{ user.username }}!</span>
+
+        <a href="{% url 'my_bookings' %}">
+            Мои бронирования
+        </a>
+
+        <form method="post"
+              action="{% url 'logout' %}"
+              style="display: inline;">
+            {% csrf_token %}
+            <button type="submit">Выйти</button>
+        </form>
+    {% else %}
+        <a href="{% url 'login' %}">Войти</a>
+        <a href="{% url 'register' %}">Регистрация</a>
+    {% endif %}
+</nav>
+
+    <a href="{% url 'my_bookings' %}" style="color: white;">
+    Мои бронирования
+</a>
+    <p>Онлайн-бронирование переговорных комнат</p>
+</header>
+
+<main>
+    <h1>Доступные переговорные</h1>
+
+    <div class="rooms">
+        {% for room in rooms %}
+            <div class="room">
+                <h2>{{ room.name }}</h2>
+                <p>{{ room.description }}</p>
+                <p>Вместимость: {{ room.capacity }} человек</p>
+
+                {% if room.is_vip %}
+                    <p class="badge vip">VIP-комната</p>
+                {% else %}
+                    <p class="badge">Стандартная комната</p>
+                {% endif %}
+
+                <a href="{% url 'book_room' room.id %}">
+    <button type="button">Забронировать</button>
+</a>
+            </div>
+        {% empty %}
+            <p>Доступных переговорных пока нет.</p>
+        {% endfor %}
+    </div>
+</main>
+
+</body>
+</html>
