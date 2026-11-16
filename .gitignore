@@ -17,3 +17,7 @@ password.txt
 htmlcov/
 .pytest_cache/
 .vscode/
+db.sqlite3.backup
+data_backup.json
+data_backup.json
+data_backup_utf8.json
