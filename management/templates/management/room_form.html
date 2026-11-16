@@ -1,0 +1,95 @@
+
+{% extends "management/base.html" %}
+
+{% block title %}Редактор переговорной{% endblock %}
+
+{% block admin_content %}
+<div class="adm-head">
+    <div>
+        <small>РЕСУРСЫ / РЕДАКТОР</small>
+        <h1>
+            {% if room %}
+                Изменить переговорную
+            {% else %}
+                Новая переговорная
+            {% endif %}
+        </h1>
+        <p>Управляйте параметрами и доступностью помещения.</p>
+    </div>
+
+    <a href="{% url 'management:rooms' %}" class="adm-btn secondary">
+        ← К списку
+    </a>
+</div>
+
+<section class="adm-panel adm-editor">
+    <div class="adm-editor-intro">
+        <h2>Информация о переговорной</h2>
+        <p>Заполните основные характеристики помещения.</p>
+    </div>
+
+    <form method="post"
+          enctype="multipart/form-data"
+          class="adm-editor-form">
+
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div class="adm-form-errors">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        <div class="adm-form-grid">
+            {% for field in form %}
+                <div class="adm-field {% if field.field.widget.input_type == 'checkbox' %}adm-field-checkbox{% endif %}">
+
+                    {% if field.field.widget.input_type == 'checkbox' %}
+                        <label class="adm-checkbox-label" for="{{ field.id_for_label }}">
+                            {{ field }}
+                            <span>{{ field.label }}</span>
+                        </label>
+                    {% else %}
+                        <label for="{{ field.id_for_label }}">
+                            {{ field.label }}
+                        </label>
+                        {{ field }}
+                    {% endif %}
+
+                    {% if field.help_text %}
+                        <small class="adm-field-help">
+                            {{ field.help_text }}
+                        </small>
+                    {% endif %}
+
+                    {% if field.errors %}
+                        <div class="adm-field-errors">
+                            {{ field.errors }}
+                        </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+
+        {% if room and room.photo %}
+            <div class="adm-current-photo">
+                <p>Текущая фотография</p>
+                <img src="{{ room.photo.url }}"
+                     alt="Фотография переговорной {{ room.name }}"
+                     loading="lazy">
+            </div>
+        {% endif %}
+
+        <div class="adm-editor-actions">
+            <button class="adm-btn" type="submit">
+                Сохранить переговорную
+            </button>
+
+            <a href="{% url 'management:rooms' %}"
+               class="adm-btn secondary">
+                Отмена
+            </a>
+        </div>
+    </form>
+</section>
+{% endblock %}

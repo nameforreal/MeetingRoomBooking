@@ -4,12 +4,19 @@ from . import views
 
 urlpatterns = [
     path("", views.home, name="home"),
+    path("rooms/", views.catalog, name="catalog"),
+    path("rooms/<int:room_id>/", views.room_detail, name="room_detail"),
+    path("about/", views.about, name="about"),
 
     path(
         "book/<int:room_id>/",
         views.book_room,
         name="book_room"
     ),
+
+    path("profile/", views.profile, name="profile"),
+    path("my-bookings/<int:booking_id>/", views.booking_detail, name="booking_detail"),
+    path("my-bookings/<int:booking_id>/edit/", views.edit_booking, name="edit_booking"),
 
     path(
         "my-bookings/",

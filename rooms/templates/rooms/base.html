@@ -1,0 +1,197 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#172435">
+    <title>{% block title %}MeetingRoomBooking{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'rooms/style.css' %}">
+    <link rel="stylesheet" href="{% static 'rooms/enterprise.css' %}">
+</head>
+<body>
+
+
+<header class="site-header">
+    <div class="container header-content">
+
+        <a class="logo" href="{% url 'home' %}">
+            <span class="logo-icon">M</span>
+            <span>MeetingRoomBooking</span>
+        </a>
+
+        <button
+            type="button"
+            class="mobile-menu-button"
+            id="menu-toggle"
+            aria-expanded="false"
+            aria-controls="main-nav"
+        >
+            ☰ <span>Меню</span>
+        </button>
+
+        <div class="header-menu" id="main-nav">
+
+            <nav class="navigation" aria-label="Основная навигация">
+                <a href="{% url 'home' %}"
+                   {% if request.resolver_match.url_name == "home" %}aria-current="page"{% endif %}>
+                    Главная
+                </a>
+
+                {% if user.is_authenticated %}
+                    {% if user.is_staff %}
+                        <a href="{% url 'management:overview' %}">
+                            Управление
+                        </a>
+                    {% endif %}
+
+                    <a href="{% url 'dashboard' %}">
+                        Рабочая панель
+                    </a>
+
+                    <a href="{% url 'schedule' %}">
+                        Расписание
+                    </a>
+                {% endif %}
+
+                <a href="{% url 'catalog' %}">
+                    Переговорные
+                </a>
+
+                <a href="{% url 'about' %}">
+                    О сервисе
+                </a>
+            </nav>
+
+            <div class="header-actions">
+
+                <button
+                    type="button"
+                    id="theme-toggle"
+                    class="theme-toggle"
+                    aria-label="Переключить тему"
+                    title="Переключить тему"
+                >
+                    <span id="theme-icon">🌙</span>
+                </button>
+
+                {% if user.is_authenticated %}
+
+                    <a href="{% url 'my_bookings' %}">
+                        Мои встречи
+                    </a>
+
+                    <a href="{% url 'profile' %}">
+                        Профиль
+                    </a>
+
+                    <span class="username">
+                        {{ user.username }}
+                    </span>
+
+                    <form method="post" action="{% url 'logout' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline">
+                            Выйти
+                        </button>
+                    </form>
+
+                {% else %}
+
+                    <a href="{% url 'login' %}">
+                        Войти
+                    </a>
+
+                    <a class="btn btn-primary" href="{% url 'register' %}">
+                        Регистрация
+                    </a>
+
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</header>
+
+
+<main class="container main-content">
+    {% if messages %}
+        <div class="messages" aria-live="polite">
+            {% for message in messages %}
+                <div class="message">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+    <div class="container">
+        <span>MeetingRoomBooking</span>
+        <span><a href="{% url 'catalog' %}">Каталог</a> · <a href="{% url 'about' %}">О сервисе</a> · Система бронирования переговорных комнат</span>
+    </div>
+</footer>
+
+<script>
+(function () {
+    const root = document.documentElement;
+    const toggle = document.getElementById("theme-toggle");
+    const icon = document.getElementById("theme-icon");
+
+    const savedTheme = localStorage.getItem("meetingroom-theme");
+
+    const systemDark = window.matchMedia(
+        "(prefers-color-scheme: dark)"
+    ).matches;
+
+    const initialTheme =
+        savedTheme === "dark" || savedTheme === "light"
+            ? savedTheme
+            : (systemDark ? "dark" : "light");
+
+    function applyTheme(theme) {
+        root.setAttribute("data-theme", theme);
+
+        if (icon) {
+            icon.textContent = theme === "dark" ? "☀️" : "🌙";
+        }
+
+        if (toggle) {
+            toggle.setAttribute(
+                "aria-label",
+                theme === "dark"
+                    ? "Включить светлую тему"
+                    : "Включить тёмную тему"
+            );
+        }
+    }
+
+    applyTheme(initialTheme);
+    const menuToggle = document.getElementById("menu-toggle");
+    const nav = document.getElementById("main-nav");
+    if (menuToggle && nav) {
+        menuToggle.addEventListener("click", function () {
+            const open = nav.classList.toggle("is-open");
+            menuToggle.setAttribute("aria-expanded", String(open));
+        });
+    }
+    document.querySelectorAll("[data-confirm-cancel]").forEach(function (form) {
+        form.addEventListener("submit", function (event) {
+            if (!window.confirm("Отменить это бронирование?")) event.preventDefault();
+        });
+    });
+
+    if (toggle) {
+        toggle.addEventListener("click", function () {
+            const currentTheme = root.getAttribute("data-theme");
+            const nextTheme = currentTheme === "dark" ? "light" : "dark";
+
+            applyTheme(nextTheme);
+            localStorage.setItem("meetingroom-theme", nextTheme);
+        });
+    }
+})();
+</script>
+
+</body>
+</html>

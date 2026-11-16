@@ -47,6 +47,9 @@ class BookingForm(forms.ModelForm):
         return cleaned_data
 
 class RegisterForm(UserCreationForm):
+    username = forms.CharField(label='Имя пользователя', max_length=150, help_text='До 150 символов. Буквы, цифры и символы @/./+/-/_.')
+    password1 = forms.CharField(label='Пароль', widget=forms.PasswordInput, help_text='Не менее 8 символов. Не используйте распространённые, слишком простые или полностью цифровые пароли.')
+    password2 = forms.CharField(label='Подтверждение пароля', widget=forms.PasswordInput, help_text='Повторите пароль для проверки.')
     email = forms.EmailField(
         required=True,
         label="Электронная почта"
@@ -60,3 +63,19 @@ class RegisterForm(UserCreationForm):
             "password1",
             "password2",
         ]
+
+
+class ProfileForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ["first_name", "last_name", "email"]
+        labels = {
+            "first_name": "Имя",
+            "last_name": "Фамилия",
+            "email": "Электронная почта",
+        }
+        widgets = {
+            "first_name": forms.TextInput(attrs={"autocomplete": "given-name"}),
+            "last_name": forms.TextInput(attrs={"autocomplete": "family-name"}),
+            "email": forms.EmailInput(attrs={"autocomplete": "email"}),
+        }

@@ -27,6 +27,8 @@ class Room(models.Model):
         verbose_name="Доступна для бронирования"
     )
 
+    photo = models.ImageField(upload_to="room_photos/", blank=True, null=True, verbose_name="Фотография")
+
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name="Дата создания"

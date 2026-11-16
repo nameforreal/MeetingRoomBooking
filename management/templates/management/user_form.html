@@ -1,0 +1,3 @@
+{% extends "management/base.html" %}{% block title %}Редактирование пользователя{% endblock %}{% block admin_content %}
+<div class="adm-head"><div><small>УЧЁТНЫЕ ЗАПИСИ</small><h1>{{ target.username }}</h1><p>Управление аккаунтом. Изменение прав доступно только суперпользователю.</p></div><a class="adm-btn secondary" href="{% url 'management:users' %}">Назад</a></div>
+<section class="adm-panel adm-editor"><form method="post">{% csrf_token %}{{ form.non_field_errors }}{% for field in form %}<div class="adm-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}<button class="adm-btn" type="submit">Сохранить изменения</button></form></section>{% endblock %}
