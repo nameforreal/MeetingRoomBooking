@@ -109,12 +109,12 @@ class Booking(models.Model):
                 "Бронирование должно длиться от 1 до 4 часов."
             )
 
-        if self.start_time < timezone.now():
+        if self.status != "cancelled" and self.start_time < timezone.now():
             raise ValidationError(
                 "Нельзя бронировать время в прошлом."
             )
 
-        if self.room_id:
+        if self.room_id and self.status != "cancelled":
             conflicts = Booking.objects.filter(
                 room_id=self.room_id,
                 start_time__lt=self.end_time,

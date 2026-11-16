@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.core.exceptions import ValidationError
+from django.db import transaction
 
 from .models import Room
 from .forms import BookingForm
@@ -38,7 +39,11 @@ def book_room(request, room_id):
             booking.user = request.user
 
             try:
-                booking.save()
+                with transaction.atomic():
+                    # PostgreSQL: serialize requests for the same room.
+                    # SQLite does not implement row-level SELECT FOR UPDATE.
+                    Room.objects.select_for_update().get(pk=room.pk)
+                    booking.save()
             except ValidationError as error:
                 form.add_error(None, error)
             else:
