@@ -1,3 +1,4 @@
+from uuid import uuid4
 from datetime import datetime, timedelta, timezone as datetime_timezone
 from unittest import skipUnless
 from unittest.mock import patch
@@ -43,7 +44,7 @@ class BusinessFixtures:
 
     def html_payload(self, start=None, end=None, **changes):
         start, end = start or self.start, end or self.end
-        data = {"room": self.room.pk, "start_time_0": start.date().isoformat(),
+        data = {"idempotency_key": str(uuid4()), "room": self.room.pk, "start_time_0": start.date().isoformat(),
                 "start_time_1": start.strftime("%H:%M:%S"), "end_time_0": end.date().isoformat(),
                 "end_time_1": end.strftime("%H:%M:%S")}
         data.update(changes)
@@ -105,7 +106,7 @@ class CalendarTests(BusinessFixtures, TestCase):
         for value in values:
             for field in ["start_time", "end_time"]:
                 with self.subTest(value=value, field=field):
-                    response = self.api.post("/api/bookings/", self.payload(**{field: value}), format="json")
+                    response = self.api.post("/api/bookings/", self.payload(**{field: value}), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4()))
                     self.assertEqual(response.status_code, 400)
 
     def test_html_bad_date_fields_are_validation_errors(self):
@@ -159,7 +160,7 @@ class TimePolicyTests(BusinessFixtures, TestCase):
                            (self.start.replace(hour=19), self.end.replace(hour=21)),
                            (self.start.replace(hour=23), self.end + timedelta(days=1))]:
             with self.subTest(start=start, end=end):
-                self.assertEqual(self.api.post("/api/bookings/", self.payload(start, end), format="json").status_code, 400)
+                self.assertEqual(self.api.post("/api/bookings/", self.payload(start, end), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4())).status_code, 400)
                 response = self.client.post(f"/book/{self.room.pk}/", self.html_payload(start, end))
                 self.assertTrue(response.context["form"].errors)
                 with self.assertRaises(ValidationError):
@@ -167,18 +168,18 @@ class TimePolicyTests(BusinessFixtures, TestCase):
 
     def test_horizon_inclusive_and_beyond_rejected(self):
         start = datetime.combine(rules.last_booking_date(), self.start.timetz())
-        self.assertEqual(self.api.post("/api/bookings/", self.payload(start, start + timedelta(hours=1)), format="json").status_code, 201)
+        self.assertEqual(self.api.post("/api/bookings/", self.payload(start, start + timedelta(hours=1)), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4())).status_code, 201)
         start += timedelta(days=1)
-        self.assertEqual(self.api.post("/api/bookings/", self.payload(start, start + timedelta(hours=1)), format="json").status_code, 400)
+        self.assertEqual(self.api.post("/api/bookings/", self.payload(start, start + timedelta(hours=1)), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4())).status_code, 400)
         response = self.client.post(f"/book/{self.room.pk}/", self.html_payload(start, start + timedelta(hours=1)))
         self.assertTrue(response.context["form"].errors)
 
     def test_open_close_and_duration_boundaries(self):
         for start, end in [(self.start.replace(hour=8), self.end.replace(hour=9)),
                            (self.start.replace(hour=16), self.end.replace(hour=20))]:
-            self.assertEqual(self.api.post("/api/bookings/", self.payload(start, end), format="json").status_code, 201)
+            self.assertEqual(self.api.post("/api/bookings/", self.payload(start, end), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4())).status_code, 201)
         for duration in [timedelta(minutes=59), timedelta(hours=4, seconds=1)]:
-            self.assertEqual(self.api.post("/api/bookings/", self.payload(self.start, self.start + duration), format="json").status_code, 400)
+            self.assertEqual(self.api.post("/api/bookings/", self.payload(self.start, self.start + duration), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4())).status_code, 400)
 
     def test_one_second_outside_workday_and_duration(self):
         opening = self.start.replace(hour=8)
@@ -190,7 +191,7 @@ class TimePolicyTests(BusinessFixtures, TestCase):
             (self.start, self.start + timedelta(hours=4, microseconds=1)),
         ]:
             with self.subTest(start=start, end=end):
-                self.assertEqual(self.api.post("/api/bookings/", self.payload(start, end), format="json").status_code, 400)
+                self.assertEqual(self.api.post("/api/bookings/", self.payload(start, end), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4())).status_code, 400)
 
     def test_naive_api_and_html_times_use_site_timezone(self):
         with timezone.override("Asia/Tokyo"):
@@ -199,26 +200,26 @@ class TimePolicyTests(BusinessFixtures, TestCase):
             self.assertEqual(form.cleaned_data["start_time"], self.start)
             response = self.api.post("/api/bookings/", self.payload(
                 self.start.replace(tzinfo=None), self.end.replace(tzinfo=None),
-            ), format="json")
+            ), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4()))
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Booking.objects.get().start_time, self.start)
 
     def test_slots_do_not_round_or_forbid_partial_hours(self):
         start = self.start + timedelta(minutes=15)
-        response = self.api.post("/api/bookings/", self.payload(start, start + timedelta(minutes=90)), format="json")
+        response = self.api.post("/api/bookings/", self.payload(start, start + timedelta(minutes=90)), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4()))
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Booking.objects.get().start_time, start)
 
     def test_valid_offset_converts_to_site_timezone(self):
         offset = datetime_timezone(timedelta(hours=3))
-        response = self.api.post("/api/bookings/", self.payload(self.start.astimezone(offset), self.end.astimezone(offset)), format="json")
+        response = self.api.post("/api/bookings/", self.payload(self.start.astimezone(offset), self.end.astimezone(offset)), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4()))
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Booking.objects.get().start_time, self.start)
 
     def test_offset_cannot_bypass_working_hours(self):
         # 08:00+03:00 is 05:00 UTC, outside the site's opening hours.
         start = self.start.replace(hour=8, tzinfo=datetime_timezone(timedelta(hours=3)))
-        self.assertEqual(self.api.post("/api/bookings/", self.payload(start, start + timedelta(hours=1)), format="json").status_code, 400)
+        self.assertEqual(self.api.post("/api/bookings/", self.payload(start, start + timedelta(hours=1)), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4())).status_code, 400)
 
     def test_naive_model_datetime_is_rejected(self):
         with self.assertRaises(ValidationError):
@@ -227,13 +228,13 @@ class TimePolicyTests(BusinessFixtures, TestCase):
     def test_request_timezone_does_not_change_site_working_hours(self):
         # All entry points use settings.TIME_ZONE, not a per-request override.
         with timezone.override("Asia/Tokyo"):
-            response = self.api.post("/api/bookings/", self.payload(), format="json")
+            response = self.api.post("/api/bookings/", self.payload(), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4()))
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Booking.objects.get().start_time, self.start)
 
     def test_past_start_rejected(self):
         start = self.start - timedelta(days=5)
-        self.assertEqual(self.api.post("/api/bookings/", self.payload(start, start + timedelta(hours=1)), format="json").status_code, 400)
+        self.assertEqual(self.api.post("/api/bookings/", self.payload(start, start + timedelta(hours=1)), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4())).status_code, 400)
 
     def test_edit_archived_room_is_rejected_without_deleting_booking(self):
         booking = self.create()

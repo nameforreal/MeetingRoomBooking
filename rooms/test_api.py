@@ -1,3 +1,4 @@
+from uuid import uuid4
 from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -27,25 +28,25 @@ class ApiTests(TestCase):
         self.assertEqual(len(response.data), 2)
 
     def test_booking_requires_login(self):
-        self.assertIn(self.client.post("/api/bookings/", self.payload()).status_code, (401, 403))
+        self.assertIn(self.client.post("/api/bookings/", self.payload(), HTTP_IDEMPOTENCY_KEY=str(uuid4())).status_code, (401, 403))
 
     def test_create_and_list_own_booking(self):
         self.client.force_authenticate(self.user)
-        response = self.client.post("/api/bookings/", self.payload(), format="json")
+        response = self.client.post("/api/bookings/", self.payload(), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4()))
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(len(self.client.get("/api/bookings/").data), 1)
         self.assertEqual(Booking.objects.get().status, "confirmed")
 
     def test_vip_is_pending(self):
         self.client.force_authenticate(self.user)
-        response = self.client.post("/api/bookings/", self.payload(room=self.vip), format="json")
+        response = self.client.post("/api/bookings/", self.payload(room=self.vip), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4()))
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data["status"], "pending")
 
     def test_overlap_rejected(self):
         self.client.force_authenticate(self.user)
-        self.assertEqual(self.client.post("/api/bookings/", self.payload(), format="json").status_code, 201)
-        response = self.client.post("/api/bookings/", self.payload(), format="json")
+        self.assertEqual(self.client.post("/api/bookings/", self.payload(), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4())).status_code, 201)
+        response = self.client.post("/api/bookings/", self.payload(), format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4()))
         self.assertEqual(response.status_code, 400)
 
     def test_cannot_read_or_cancel_other_users_booking(self):
@@ -66,6 +67,6 @@ class ApiTests(TestCase):
         data = self.payload()
         data["status"] = "confirmed"
         data["user"] = self.other.pk
-        response = self.client.post("/api/bookings/", data, format="json")
+        response = self.client.post("/api/bookings/", data, format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4()))
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Booking.objects.get().user, self.user)

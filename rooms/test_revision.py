@@ -1,3 +1,4 @@
+from uuid import uuid4
 from datetime import timedelta
 from unittest import skipUnless
 from unittest.mock import patch
@@ -102,7 +103,7 @@ class RevisionTests(RevisionFixtures, TestCase):
 
     def test_create_does_not_require_revision(self):
         response = self.api.post("/api/bookings/", {"room": self.room.pk,
-            "start_time": self.end.isoformat(), "end_time": (self.end + timedelta(hours=1)).isoformat()}, format="json")
+            "start_time": self.end.isoformat(), "end_time": (self.end + timedelta(hours=1)).isoformat()}, format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4()))
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data["revision"], 1)
 
@@ -207,6 +208,7 @@ class RevisionTests(RevisionFixtures, TestCase):
     def test_admin_add_does_not_require_revision(self):
         self.client.force_login(self.staff)
         data = self.admin_data(start_time_1="11:00", end_time_1="12:00")
+        data["idempotency_key"] = "admin-add-without-revision"
         data.pop("expected_revision")
         response = self.client.post("/admin/rooms/booking/add/", data)
         self.assertEqual(response.status_code, 302)

@@ -1,10 +1,22 @@
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 from django import forms
+from uuid import uuid4
 from django.utils import timezone
 
 from .models import Booking, Room
 from .booking_operations import parse_revision
+from .booking_idempotency import validate_key
+
+
+class IdempotencyKeyField(forms.CharField):
+    def __init__(self, **kwargs):
+        super().__init__(strip=False, widget=forms.HiddenInput, initial=uuid4, **kwargs)
+
+    def clean(self, value):
+        if not self.required and value in self.empty_values:
+            return None
+        return validate_key(value)
 
 
 class RevisionField(forms.Field):
@@ -48,6 +60,13 @@ class BookingForm(forms.ModelForm):
     class Meta:
         model = Booking
         fields = ["start_time", "end_time"]
+
+class CreateBookingForm(forms.Form):
+    """Parse only; time/conflict checks run once inside the creation operation."""
+    idempotency_key = IdempotencyKeyField()
+    start_time = BookingForm.base_fields["start_time"]
+    end_time = BookingForm.base_fields["end_time"]
+
 
 class EditBookingForm(BookingForm):
     revision = RevisionField(widget=forms.HiddenInput)

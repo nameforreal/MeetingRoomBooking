@@ -1,3 +1,4 @@
+from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from threading import Barrier
@@ -185,7 +186,7 @@ class PostgreSQLConcurrencyTests(OperationFixtures, TransactionTestCase):
             client.force_authenticate(self.user)
             return client.post("/api/bookings/", {
                 "room": self.room.pk, "start_time": self.start.isoformat(), "end_time": self.end.isoformat(),
-            }, format="json").status_code
+            }, format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4())).status_code
         self.assertCountEqual(self.race(create, create), [201, 400])
         self.assertEqual(Booking.objects.count(), 1)
 
@@ -194,7 +195,7 @@ class PostgreSQLConcurrencyTests(OperationFixtures, TransactionTestCase):
         client.force_login(self.user)
 
         def html():
-            return client.post(f"/book/{self.room.pk}/", {
+            return client.post(f"/book/{self.room.pk}/", {"idempotency_key": str(uuid4()),
                 "start_time_0": self.start.date().isoformat(), "start_time_1": "10:00",
                 "end_time_0": self.end.date().isoformat(), "end_time_1": "11:00",
             }).status_code
@@ -204,7 +205,7 @@ class PostgreSQLConcurrencyTests(OperationFixtures, TransactionTestCase):
             client.force_authenticate(self.user)
             return client.post("/api/bookings/", {
                 "room": self.room.pk, "start_time": self.start.isoformat(), "end_time": self.end.isoformat(),
-            }, format="json").status_code
+            }, format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4())).status_code
         results = self.race(html, api)
         self.assertIn(results, [[302, 400], [200, 201]])
         self.assertEqual(Booking.objects.count(), 1)

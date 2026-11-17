@@ -1,4 +1,4 @@
-"""Transactional booking writes. Lock order: rooms by PK, then booking.
+"""Transactional booking writes. Lock order: creation key, rooms by PK, booking.
 
 No caller may acquire booking locks before entering this module.
 Each operation changes one booking; batch callers invoke separate operations.
@@ -55,10 +55,17 @@ def authorize(actor, booking, operation):
 
 
 def create(*, actor, room, start_time, end_time, user=None):
+    """Trusted internal creation. HTTP callers must use create_once()."""
     from .models import Booking
     booking = Booking(room=room, user=user or actor, start_time=start_time, end_time=end_time)
     authorize(actor, booking, "create")
     return persist(booking)
+
+
+def create_once(*, actor, key, room_id, start_time, end_time, user=None):
+    from .booking_idempotency import create as idempotent_create
+    return idempotent_create(actor=actor, key=key, room_id=room_id,
+                             start_time=start_time, end_time=end_time, user=user)
 
 
 def edit(booking, *, actor, revision=None, **changes):

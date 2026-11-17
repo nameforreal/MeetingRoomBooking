@@ -1,3 +1,4 @@
+from uuid import uuid4
 from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -136,7 +137,7 @@ class BookingApiTests(TestCase):
             "room": self.room.pk,
             "start_time": (self.start + timedelta(days=1)).isoformat(),
             "end_time": (self.end + timedelta(days=1)).isoformat(),
-        }, format="json")
+        }, format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4()))
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(Booking.objects.filter(user=self.user).count(), 1)
 

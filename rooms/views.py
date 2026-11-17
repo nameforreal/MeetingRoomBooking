@@ -13,7 +13,8 @@ from django.db.models import Q
 from .models import Room
 from . import booking_operations as operations
 from . import booking_rules as rules
-from .forms import BookingForm, EditBookingForm, ProfileForm
+from .forms import CreateBookingForm, EditBookingForm, ProfileForm
+from .booking_idempotency import IdempotencyError
 
 
 
@@ -80,22 +81,20 @@ def catalog(request):
 
 @login_required
 def book_room(request, room_id):
-    room = get_object_or_404(
-        Room,
-        id=room_id,
-        is_active=True
-    )
-
+    response_status = 200
     if request.method == "POST":
-        form = BookingForm(request.POST)
+        form = CreateBookingForm(request.POST)
 
         if form.is_valid():
             try:
-                operations.create(actor=request.user, room=room,
+                operations.create_once(actor=request.user, room_id=room_id,
+                                  key=form.cleaned_data["idempotency_key"],
                                   start_time=form.cleaned_data["start_time"],
                                   end_time=form.cleaned_data["end_time"])
             except ValidationError as error:
                 form.add_error(None, error)
+                if isinstance(error, IdempotencyError):
+                    response_status = error.status
             else:
                 messages.success(
                     request,
@@ -103,7 +102,10 @@ def book_room(request, room_id):
                 )
                 return redirect("home")
     else:
-        form = BookingForm()
+        form = CreateBookingForm()
+
+    # A successful POST replay above also works after the room is archived.
+    room = get_object_or_404(Room, id=room_id, **({"is_active": True} if request.method != "POST" else {}))
 
     now = timezone.localtime(timezone.now(), timezone.get_default_timezone())
     today = rules.site_today()
@@ -124,7 +126,7 @@ def book_room(request, room_id):
         busy = any(item.start_time < end and item.end_time > start for item in occupied)
         slots.append({"label": f"{hour:02d}:00", "end_label": f"{hour + 1:02d}:00", "busy": busy, "past": start <= now})
 
-    return render(
+    response = render(
         request,
         "rooms/booking.html",
         {
@@ -136,8 +138,11 @@ def book_room(request, room_id):
             "max_date": rules.last_booking_date().isoformat(),
             "today": today.isoformat(),
             "site_timezone": timezone.get_default_timezone_name(),
-        }
+        }, status=response_status
     )
+    if response_status == 503:
+        response["Retry-After"] = "1"
+    return response
 
 @login_required
 def my_bookings(request):

@@ -5,7 +5,9 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 from .models import Room, Booking
 from . import booking_operations as operations
-from .forms import RevisionField
+from .forms import RevisionField, IdempotencyKeyField
+from .booking_idempotency import IdempotencyError
+from django.forms.models import construct_instance
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 from django import forms
@@ -43,6 +45,7 @@ class RoomAdmin(admin.ModelAdmin):
 
 class BookingAdminForm(forms.ModelForm):
     expected_revision = RevisionField(required=False, widget=forms.HiddenInput)
+    idempotency_key = IdempotencyKeyField(required=False)
 
     class Meta:
         model = Booking
@@ -52,6 +55,16 @@ class BookingAdminForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.initial["expected_revision"] = self.instance.revision
         self.fields["expected_revision"].required = not self.instance._state.adding
+        self.fields["idempotency_key"].required = self.instance._state.adding
+
+    def _post_clean(self):
+        if self.instance._state.adding:
+            # Fields have been parsed, but model.clean() would reject a replay
+            # after cancellation/archival/time passing. The operation validates
+            # new bookings under its room lock instead.
+            self.instance = construct_instance(self, self.instance, self._meta.fields, self._meta.exclude)
+        else:
+            super()._post_clean()
 
 
 @admin.register(Booking)
@@ -68,11 +81,28 @@ class BookingAdmin(admin.ModelAdmin):
     actions = ["confirm_bookings", "reject_bookings", "export_bookings_csv"]
     fieldsets = (
         ("Бронирование", {"fields": ("room", "user", "start_time", "end_time", "status")}),
-        ("Служебная информация", {"fields": ("created_at", "expected_revision")}),
+        ("Служебная информация", {"fields": ("created_at", "expected_revision", "idempotency_key")}),
     )
+
+    def get_form(self, request, obj=None, **kwargs):
+        base = super().get_form(request, obj, **kwargs)
+        class RequestForm(base):
+            def clean(self):
+                data = super().clean()
+                if hasattr(request, "_booking_creation_error"):
+                    raise request._booking_creation_error
+                return data
+        return RequestForm
 
     def save_model(self, request, obj, form, change):
         # Django has checked add/change permissions before this hook.
+        if not change:
+            result = operations.create_once(actor=request.user, key=form.cleaned_data["idempotency_key"],
+                                            room_id=obj.room_id, user=obj.user,
+                                            start_time=obj.start_time, end_time=obj.end_time)
+            obj.__dict__.update(result.booking.__dict__)
+            obj._booking_noop = result.replayed
+            return
         revision = form.cleaned_data.get("expected_revision")
         if change and obj.status == "cancelled":
             if {"room", "user", "start_time", "end_time"}.intersection(form.changed_data):
@@ -86,10 +116,24 @@ class BookingAdmin(admin.ModelAdmin):
         if not getattr(obj, "_booking_noop", False):
             return super().log_change(request, obj, message)
 
+    def log_addition(self, request, obj, message):
+        if not getattr(obj, "_booking_noop", False):
+            return super().log_addition(request, obj, message)
+
     def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
         try:
             return super().changeform_view(request, object_id, form_url, extra_context)
         except ValidationError as error:
+            if object_id is None:
+                # Re-render the bound form with its original key, without
+                # rerunning the failed operation or producing a fresh key.
+                request._booking_creation_error = error
+                response = super().changeform_view(request, object_id, form_url, extra_context)
+                if isinstance(error, IdempotencyError):
+                    response.status_code = error.status
+                    if error.status == 503:
+                        response["Retry-After"] = "1"
+                return response
             # A race discovered after form validation must roll back, not return 500.
             self.message_user(request, "; ".join(error.messages), messages.ERROR)
             return HttpResponseRedirect(request.path)

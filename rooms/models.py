@@ -73,6 +73,59 @@ from django.utils import timezone
 from .querysets import BookingQuerySet
 
 
+class CreationRequestQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise TypeError("Creation receipts are immutable; use booking_operations.create_once().")
+
+    def delete(self):
+        raise TypeError("Creation receipts have no TTL and must not be deleted.")
+
+    def bulk_create(self, objs, **kwargs):
+        raise TypeError("Use booking_operations.create_once().")
+
+    def bulk_update(self, objs, fields, **kwargs):
+        raise TypeError("Creation receipts are immutable.")
+
+    def update_or_create(self, *args, **kwargs):
+        raise TypeError("Creation receipts are immutable.")
+
+
+class BookingCreationRequest(models.Model):
+    """A receipt committed with its booking; reservations never commit alone."""
+
+    objects = CreationRequestQuerySet.as_manager()
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    operation = models.CharField(max_length=32, default="booking.create", editable=False)
+    key = models.CharField(max_length=128)
+    normalization_version = models.PositiveSmallIntegerField(default=1)
+    canonical_payload = models.JSONField()
+    payload_hash = models.CharField(max_length=64)
+    booking = models.ForeignKey("Booking", null=True, on_delete=models.PROTECT)
+    response_payload = models.JSONField(null=True)
+    response_status = models.PositiveSmallIntegerField(default=201)
+    response_version = models.PositiveSmallIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True)
+
+    def save(self, *args, **kwargs):
+        raise TypeError("Use booking_operations.create_once(); receipts must commit with bookings.")
+
+    def delete(self, *args, **kwargs):
+        raise TypeError("Creation receipts have no TTL and must not be deleted.")
+
+    class Meta:
+        base_manager_name = "objects"
+        default_manager_name = "objects"
+        constraints = [
+            models.UniqueConstraint(fields=["actor", "operation", "key"], name="booking_creation_key_unique"),
+            models.CheckConstraint(
+                condition=(models.Q(booking__isnull=True, response_payload__isnull=True, completed_at__isnull=True)
+                           | models.Q(booking__isnull=False, response_payload__isnull=False, completed_at__isnull=False)),
+                name="booking_creation_result_consistent",
+            ),
+        ]
+
+
 class Booking(models.Model):
     objects = BookingQuerySet.as_manager()
     revision = models.PositiveIntegerField(default=0, editable=False)

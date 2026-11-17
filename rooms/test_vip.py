@@ -1,3 +1,4 @@
+from uuid import uuid4
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
@@ -29,7 +30,7 @@ class VipApprovalTests(TestCase):
 
     def html_data(self, room=None):
         return {
-            "revision": self.booking.revision,
+            "idempotency_key": str(uuid4()), "revision": self.booking.revision,
             "room": (room or self.vip).pk,
             "start_time_0": self.start.date().isoformat(), "start_time_1": "10:00",
             "end_time_0": self.end.date().isoformat(), "end_time_1": "11:00",
@@ -78,7 +79,7 @@ class VipApprovalTests(TestCase):
         response = self.api.post("/api/bookings/", {
             "room": self.vip.pk, "start_time": self.start.isoformat(),
             "end_time": self.end.isoformat(), "status": "confirmed",
-        }, format="json")
+        }, format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4()))
         self.assertEqual(response.status_code, 201, response.data)
         created = Booking.objects.get(pk=response.data["id"])
         self.assertEqual(created.status, "pending")

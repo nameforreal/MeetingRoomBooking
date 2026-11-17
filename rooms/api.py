@@ -11,6 +11,7 @@ from .models import Room, Booking
 from . import booking_operations as operations
 from .permissions import RoomPermissions, staff_has_perm
 from . import booking_rules as rules
+from .booking_idempotency import IdempotencyError, validate_key
 
 
 def query_date(params, key, *, booking=False):
@@ -63,6 +64,13 @@ class BookingRevisionSerializer(serializers.Serializer):
     revision = RevisionSerializerField()
 
 
+class BookingCreateSerializer(serializers.Serializer):
+    # Syntax only: dynamic business checks must follow receipt lookup.
+    room = serializers.IntegerField(min_value=1, max_value=9223372036854775807)
+    start_time = SiteDateTimeField()
+    end_time = SiteDateTimeField()
+
+
 class BookingSerializer(serializers.ModelSerializer):
     start_time = SiteDateTimeField()
     end_time = SiteDateTimeField()
@@ -111,11 +119,7 @@ class BookingSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        validated_data.pop("revision", None)
-        try:
-            return operations.create(actor=self.context["request"].user, **validated_data)
-        except DjangoValidationError as exc:
-            raise serializers.ValidationError({"booking": exc.messages}) from exc
+        raise TypeError("Use BookingViewSet.create() and operations.create_once().")
 
     def update(self, instance, validated_data):
         try:
@@ -178,6 +182,22 @@ class BookingViewSet(viewsets.ModelViewSet):
     serializer_class = BookingSerializer
     permission_classes = [IsAuthenticated]
     http_method_names = ["get", "post", "put", "patch", "head", "options"]
+
+    def create(self, request, *args, **kwargs):
+        try:
+            key = validate_key(request.headers.get("Idempotency-Key"))
+            serializer = BookingCreateSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            data = serializer.validated_data
+            result = operations.create_once(actor=request.user, key=key, room_id=data["room"],
+                                            start_time=data["start_time"], end_time=data["end_time"])
+        except IdempotencyError as exc:
+            headers = {"Retry-After": "1"} if exc.status == 503 else {}
+            return Response({"code": exc.code, "detail": exc.messages[0]}, status=exc.status, headers=headers)
+        except DjangoValidationError as exc:
+            return Response({"booking": exc.messages}, status=400)
+        return Response(result.payload, status=result.status,
+                        headers={"Idempotency-Replayed": "true" if result.replayed else "false"})
 
     def get_queryset(self):
         queryset = Booking.objects.filter(user=self.request.user).select_related("room")
