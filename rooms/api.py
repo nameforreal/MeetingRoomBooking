@@ -1,27 +1,72 @@
-import csv
-from datetime import datetime, time, timedelta
+import re
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import transaction
-from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.utils.dateparse import parse_date
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
 from .models import Room, Booking
+from . import booking_operations as operations
+from .permissions import RoomPermissions, staff_has_perm
+from . import booking_rules as rules
+
+
+def query_date(params, key, *, booking=False):
+    try:
+        if key not in params and not booking:
+            return None
+        parser = rules.booking_date if booking else rules.parse_calendar_date
+        return parser(params.get(key))
+    except DjangoValidationError as exc:
+        raise serializers.ValidationError({key: exc.messages}) from exc
+
+
+class SiteDateTimeField(serializers.DateTimeField):
+    def default_timezone(self):
+        return timezone.get_default_timezone()
+
+    def to_internal_value(self, value):
+        if isinstance(value, str) and ("T" in value or " " in value):
+            offset = re.search(r"[+-](\d{2})(?::?(\d{2}))?(?::?(\d{2}))?(?:[.,]\d+)?$", value)
+            if offset and (int(offset[1]) >= 24 or any(int(part or 0) >= 60 for part in offset.groups()[1:])):
+                self.fail("invalid", format="ISO 8601")
+        try:
+            return super().to_internal_value(value)
+        except (OverflowError, ValueError, TypeError):
+            self.fail("invalid", format="ISO 8601")
 
 
 class RoomSerializer(serializers.ModelSerializer):
+    def update(self, instance, validated_data):
+        try:
+            return super().update(instance, validated_data)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"room": exc.messages}) from exc
+
     class Meta:
         model = Room
         fields = ["id", "name", "description", "capacity", "is_vip", "is_active", "created_at"]
         read_only_fields = ["id", "created_at"]
 
 
+class RevisionSerializerField(serializers.IntegerField):
+    def to_internal_value(self, value):
+        try:
+            return operations.parse_revision(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages) from exc
+
+
+class BookingRevisionSerializer(serializers.Serializer):
+    revision = RevisionSerializerField()
+
+
 class BookingSerializer(serializers.ModelSerializer):
+    start_time = SiteDateTimeField()
+    end_time = SiteDateTimeField()
+    revision = RevisionSerializerField(required=False)
     room_name = serializers.CharField(source="room.name", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
 
@@ -29,7 +74,7 @@ class BookingSerializer(serializers.ModelSerializer):
         model = Booking
         fields = [
             "id", "room", "room_name", "start_time", "end_time",
-            "status", "status_display", "created_at",
+            "status", "status_display", "created_at", "revision",
         ]
         read_only_fields = ["id", "status", "status_display", "created_at"]
 
@@ -40,6 +85,11 @@ class BookingSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         instance = self.instance
+        if instance is not None:
+            try:
+                attrs["revision"] = operations.parse_revision(attrs.get("revision"))
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError(exc.message_dict) from exc
         room = attrs.get("room", getattr(instance, "room", None))
         start = attrs.get("start_time", getattr(instance, "start_time", None))
         end = attrs.get("end_time", getattr(instance, "end_time", None))
@@ -61,30 +111,15 @@ class BookingSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        room = validated_data["room"]
+        validated_data.pop("revision", None)
         try:
-            with transaction.atomic():
-                locked_room = Room.objects.select_for_update().get(pk=room.pk)
-                if not locked_room.is_active:
-                    raise serializers.ValidationError({"room": "Комната недоступна для бронирования."})
-                booking = Booking(user=self.context["request"].user, **validated_data)
-                booking.save()
-                return booking
+            return operations.create(actor=self.context["request"].user, **validated_data)
         except DjangoValidationError as exc:
             raise serializers.ValidationError({"booking": exc.messages}) from exc
 
     def update(self, instance, validated_data):
         try:
-            with transaction.atomic():
-                locked = Booking.objects.select_for_update().get(pk=instance.pk)
-                room = validated_data.get("room", locked.room)
-                Room.objects.select_for_update().get(pk=room.pk)
-                if not room.is_active:
-                    raise serializers.ValidationError({"room": "Комната недоступна для бронирования."})
-                for field, value in validated_data.items():
-                    setattr(locked, field, value)
-                locked.save()
-                return locked
+            return operations.edit(instance, actor=self.context["request"].user, **validated_data)
         except DjangoValidationError as exc:
             raise serializers.ValidationError({"booking": exc.messages}) from exc
 
@@ -93,32 +128,35 @@ class RoomViewSet(viewsets.ModelViewSet):
     serializer_class = RoomSerializer
     http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
 
-    def get_permissions(self):
-        if self.request.method in ("GET", "HEAD", "OPTIONS"):
-            return [AllowAny()]
-        return [IsAdminUser()]
+    permission_classes = [RoomPermissions]
 
     def get_queryset(self):
-        return Room.objects.filter(is_active=True).order_by("name")
+        queryset = Room.objects.all().order_by("name")
+        if self.action in {"update", "partial_update", "destroy"}:
+            return queryset
+        if (self.action in {"list", "retrieve"}
+                and self.request.query_params.get("include_archived") == "true"):
+            from rest_framework.exceptions import PermissionDenied
+            if not staff_has_perm(self.request.user, "rooms.view_room"):
+                raise PermissionDenied()
+            return queryset
+        return queryset.filter(is_active=True)
 
     def destroy(self, request, *args, **kwargs):
         # Preserve historical bookings: remove a room from the public catalog instead of deleting it.
         room = self.get_object()
         room.is_active = False
-        room.save(update_fields=["is_active"])
+        try:
+            room.save(update_fields=["is_active"])
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"room": exc.messages}) from exc
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get"], permission_classes=[AllowAny])
     def availability(self, request, pk=None):
         room = self.get_object()
-        try:
-            selected = parse_date(request.query_params.get("date", ""))
-        except ValueError:
-            selected = None
-        if not selected:
-            return Response({"date": "Укажите дату в формате YYYY-MM-DD."}, status=400)
-        start = timezone.make_aware(datetime.combine(selected, time.min))
-        end = start + timedelta(days=1)
+        selected = query_date(request.query_params, "date", booking=True)
+        start, end = rules.day_bounds(selected)
         bookings = Booking.objects.filter(
             room=room,
             status__in=["pending", "confirmed"],
@@ -150,8 +188,10 @@ class BookingViewSet(viewsets.ModelViewSet):
         room_id = params.get("room")
         if room_id and room_id.isdigit():
             queryset = queryset.filter(room_id=int(room_id))
-        date_from = parse_date(params.get("date_from", ""))
-        date_to = parse_date(params.get("date_to", ""))
+        date_from = query_date(params, "date_from")
+        date_to = query_date(params, "date_to")
+        if date_from and date_to and date_to < date_from:
+            raise serializers.ValidationError({"date_to": ["Конец периода должен быть не раньше начала."]})
         if date_from:
             queryset = queryset.filter(start_time__date__gte=date_from)
         if date_to:
@@ -166,12 +206,11 @@ class BookingViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
-        with transaction.atomic():
-            booking = get_object_or_404(self.get_queryset().select_for_update(), pk=pk)
-            if booking.status == "cancelled":
-                return Response(self.get_serializer(booking).data)
-            if booking.end_time <= timezone.now():
-                return Response({"detail": "Нельзя отменить уже завершившуюся встречу."}, status=400)
-            booking.status = "cancelled"
-            booking.save(update_fields=["status"])
+        booking = self.get_object()
+        payload = BookingRevisionSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            booking = operations.cancel(booking, actor=request.user, revision=payload.validated_data["revision"])
+        except DjangoValidationError as exc:
+            return Response({"booking": exc.messages}, status=400)
         return Response(self.get_serializer(booking).data, status=status.HTTP_200_OK)

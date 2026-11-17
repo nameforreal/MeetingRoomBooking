@@ -14,7 +14,7 @@ class ApiTests(TestCase):
         self.room = Room.objects.create(name="Room A", capacity=4)
         self.vip = Room.objects.create(name="VIP", capacity=6, is_vip=True)
         self.client = APIClient()
-        self.start = timezone.now() + timedelta(days=2)
+        self.start = (timezone.now() + timedelta(days=2)).replace(hour=10, minute=0, second=0, microsecond=0)
         self.end = self.start + timedelta(hours=2)
 
     def payload(self, room=None, start=None, end=None):
@@ -52,12 +52,12 @@ class ApiTests(TestCase):
         booking = Booking.objects.create(room=self.room, user=self.other, start_time=self.start, end_time=self.end)
         self.client.force_authenticate(self.user)
         self.assertEqual(self.client.get(f"/api/bookings/{booking.pk}/").status_code, 404)
-        self.assertEqual(self.client.post(f"/api/bookings/{booking.pk}/cancel/").status_code, 404)
+        self.assertEqual(self.client.post(f"/api/bookings/{booking.pk}/cancel/", {"revision": booking.revision}).status_code, 404)
 
     def test_owner_can_cancel(self):
         booking = Booking.objects.create(room=self.room, user=self.user, start_time=self.start, end_time=self.end)
         self.client.force_authenticate(self.user)
-        self.assertEqual(self.client.post(f"/api/bookings/{booking.pk}/cancel/").status_code, 200)
+        self.assertEqual(self.client.post(f"/api/bookings/{booking.pk}/cancel/", {"revision": booking.revision}).status_code, 200)
         booking.refresh_from_db()
         self.assertEqual(booking.status, "cancelled")
 

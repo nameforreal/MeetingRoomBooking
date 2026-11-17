@@ -28,5 +28,4 @@ class UserEditForm(forms.ModelForm):
     def __init__(self, *args, allow_roles=False, **kwargs):
         super().__init__(*args, **kwargs)
         if not allow_roles:
-            self.fields.pop("is_active")
             self.fields.pop("is_staff")

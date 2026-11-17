@@ -12,7 +12,7 @@ class BookingTests(TestCase):
         self.user = get_user_model().objects.create_user(username="tester", password="StrongPass123!")
         self.other = get_user_model().objects.create_user(username="other", password="StrongPass123!")
         self.room = Room.objects.create(name="Test room", capacity=4)
-        self.start = timezone.now() + timedelta(days=2)
+        self.start = (timezone.now() + timedelta(days=2)).replace(hour=10, minute=0, second=0, microsecond=0)
         self.end = self.start + timedelta(hours=2)
 
     def create_booking(self, **changes):
@@ -53,16 +53,18 @@ class BookingTests(TestCase):
     def test_cancel_frees_slot(self):
         booking = self.create_booking()
         booking.status = "cancelled"
-        booking.save(update_fields=["status"])
+        booking.save(revision=booking.revision, update_fields=["status"])
         self.create_booking()
         self.assertEqual(Booking.objects.count(), 2)
 
     def test_cancel_old_booking(self):
-        booking = self.create_booking()
-        Booking.objects.filter(pk=booking.pk).update(start_time=timezone.now() - timedelta(days=2), end_time=timezone.now() - timedelta(days=2, hours=-2))
-        booking.refresh_from_db()
+        from unittest.mock import patch
+        past = (timezone.now() - timedelta(days=3)).replace(hour=8, minute=0, second=0, microsecond=0)
+        with patch("django.utils.timezone.now", return_value=past):
+            booking = self.create_booking(start_time=past + timedelta(hours=1),
+                                          end_time=past + timedelta(hours=3))
         booking.status = "cancelled"
-        booking.save(update_fields=["status"])
+        booking.save(revision=booking.revision, update_fields=["status"])
         booking.refresh_from_db()
         self.assertEqual(booking.status, "cancelled")
 
@@ -104,7 +106,7 @@ class BookingApiTests(TestCase):
         self.user = get_user_model().objects.create_user(username="api_user", password="StrongPass123!")
         self.other = get_user_model().objects.create_user(username="api_other", password="StrongPass123!")
         self.room = Room.objects.create(name="API room", capacity=8)
-        self.start = timezone.now() + timedelta(days=3)
+        self.start = (timezone.now() + timedelta(days=3)).replace(hour=10, minute=0, second=0, microsecond=0)
         self.end = self.start + timedelta(hours=1)
 
     def booking(self, **kwargs):
@@ -142,7 +144,7 @@ class BookingApiTests(TestCase):
         booking = self.booking()
         self.api.force_authenticate(self.user)
         new_start = self.start + timedelta(days=2)
-        response = self.api.patch(f"/api/bookings/{booking.pk}/", {
+        response = self.api.patch(f"/api/bookings/{booking.pk}/", {"revision": booking.revision,
             "start_time": new_start.isoformat(),
             "end_time": (new_start + timedelta(hours=2)).isoformat(),
         }, format="json")
@@ -153,7 +155,7 @@ class BookingApiTests(TestCase):
     def test_cannot_update_another_users_booking(self):
         booking = self.booking()
         self.api.force_authenticate(self.other)
-        response = self.api.patch(f"/api/bookings/{booking.pk}/", {"start_time": (self.start + timedelta(days=2)).isoformat()}, format="json")
+        response = self.api.patch(f"/api/bookings/{booking.pk}/", {"revision": booking.revision,"start_time": (self.start + timedelta(days=2)).isoformat()}, format="json")
         self.assertEqual(response.status_code, 404)
 
     def test_patch_rejects_overlap(self):
@@ -161,7 +163,7 @@ class BookingApiTests(TestCase):
         second_start = self.start + timedelta(days=1)
         second = self.booking(start_time=second_start, end_time=second_start + timedelta(hours=1))
         self.api.force_authenticate(self.user)
-        response = self.api.patch(f"/api/bookings/{second.pk}/", {
+        response = self.api.patch(f"/api/bookings/{second.pk}/", {"revision": second.revision,
             "start_time": (self.start + timedelta(minutes=15)).isoformat(),
             "end_time": (self.start + timedelta(hours=1, minutes=15)).isoformat(),
         }, format="json")
@@ -172,7 +174,7 @@ class BookingApiTests(TestCase):
     def test_cancel_booking(self):
         booking = self.booking()
         self.api.force_authenticate(self.user)
-        response = self.api.post(f"/api/bookings/{booking.pk}/cancel/")
+        response = self.api.post(f"/api/bookings/{booking.pk}/cancel/", {"revision": booking.revision})
         self.assertEqual(response.status_code, 200)
         booking.refresh_from_db()
         self.assertEqual(booking.status, "cancelled")
@@ -198,6 +200,8 @@ class BookingApiTests(TestCase):
 
     def test_staff_can_create_and_archive_room_via_api(self):
         staff = get_user_model().objects.create_user(username="api_staff", password="StrongPass123!", is_staff=True)
+        from django.contrib.auth.models import Permission
+        staff.user_permissions.add(*Permission.objects.filter(content_type__app_label="rooms", codename__in=["add_room", "change_room"]))
         self.api.force_authenticate(staff)
         response = self.api.post("/api/rooms/", {"name": "Staff room", "capacity": 12, "is_vip": True}, format="json")
         self.assertEqual(response.status_code, 201, response.data)
@@ -212,7 +216,7 @@ class AdminWorkflowTests(TestCase):
         self.admin_user = get_user_model().objects.create_superuser(username="siteadmin", email="admin@example.com", password="StrongPass123!")
         self.user = get_user_model().objects.create_user(username="admin_target", password="StrongPass123!")
         self.room = Room.objects.create(name="Admin room", capacity=10, is_vip=True)
-        start = timezone.now() + timedelta(days=4)
+        start = (timezone.now() + timedelta(days=4)).replace(hour=10, minute=0, second=0, microsecond=0)
         self.booking = Booking.objects.create(room=self.room, user=self.user, start_time=start, end_time=start + timedelta(hours=1))
         self.client.force_login(self.admin_user)
 

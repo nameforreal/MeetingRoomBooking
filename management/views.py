@@ -13,13 +13,17 @@ from .forms import RoomForm, UserEditForm
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from rooms.models import Booking,Room
+from rooms import booking_operations as operations
+from rooms import booking_rules as rules
+from rooms.permissions import staff_permission_required, staff_has_perm, can_edit_account
+from django.core.exceptions import PermissionDenied
 
-@staff_member_required
+@staff_permission_required("rooms.view_booking")
 def overview(request):
  q=Booking.objects.select_related('room','user'); now=timezone.now()
- return render(request,'management/overview.html',{'rooms_total':Room.objects.count(),'active_rooms':Room.objects.filter(is_active=True).count(),'users_total':get_user_model().objects.count(),'bookings_total':q.count(),'pending_total':q.filter(status='pending').count(),'upcoming_total':q.filter(end_time__gte=now).exclude(status='cancelled').count(),'recent':q.order_by('-created_at')[:8],'popular':Room.objects.annotate(total=Count('bookings',filter=Q(bookings__status__in=['pending','confirmed']))).order_by('-total')[:5]})
+ return render(request,'management/overview.html',{'rooms_total':Room.objects.count(),'active_rooms':Room.objects.filter(is_active=True).count(),'users_total':get_user_model().objects.count() if staff_has_perm(request.user, 'auth.view_user') else None,'bookings_total':q.count(),'pending_total':q.filter(status='pending').count(),'upcoming_total':q.filter(end_time__gte=now).exclude(status='cancelled').count(),'recent':q.order_by('-created_at')[:8],'popular':Room.objects.annotate(total=Count('bookings',filter=Q(bookings__status__in=['pending','confirmed']))).order_by('-total')[:5]})
 
-@staff_member_required
+@staff_permission_required("rooms.view_booking")
 def bookings(request):
  q=Booking.objects.select_related('room','user').order_by('-start_time'); s=request.GET.get('status',''); term=request.GET.get('q','').strip()[:100]
  if s in ('pending','confirmed','cancelled'): q=q.filter(status=s)
@@ -27,32 +31,33 @@ def bookings(request):
  if term: q=q.filter(Q(room__name__icontains=term)|Q(user__username__icontains=term)|Q(user__email__icontains=term))
  return render(request,'management/bookings.html',{'items':q[:300],'count':q.count(),'status_filter':s,'query':term})
 
-@staff_member_required
+@staff_permission_required("rooms.change_booking")
 @require_POST
 def status(request,pk):
  b=get_object_or_404(Booking.objects.select_related('room'),pk=pk); target=request.POST.get('status')
- if target not in ('confirmed','cancelled') or b.status=='cancelled' or (target=='confirmed' and b.status!='pending'):
+ if target not in ('confirmed','cancelled') or (target=='confirmed' and b.status!='pending'):
   messages.error(request,'Недопустимое изменение статуса.'); return redirect('management:bookings')
- old=b.status; b.status=target
- try: b.save()
+ try:
+   if target == "confirmed": operations.confirm(b, actor=request.user, revision=request.POST.get("revision"))
+   else: operations.cancel(b, actor=request.user, revision=request.POST.get("revision"))
  except ValidationError as e:
-  b.status=old; messages.error(request,'Проверка не пройдена: '+'; '.join(e.messages))
+  messages.error(request, "; ".join(e.messages))
  else: messages.success(request,'Статус обновлён.')
  return redirect('management:bookings')
 
-@staff_member_required
+@staff_permission_required("rooms.view_room")
 def rooms(request):
  q=Room.objects.annotate(total=Count('bookings',filter=Q(bookings__status__in=['pending','confirmed']))).order_by('name'); term=request.GET.get('q','').strip()[:100]
  if term: q=q.filter(Q(name__icontains=term)|Q(description__icontains=term))
  return render(request,'management/rooms.html',{'items':q,'query':term})
 
-@staff_member_required
+@staff_permission_required("auth.view_user")
 def users(request):
  U=get_user_model(); q=U.objects.annotate(total=Count('bookings')).order_by('username'); term=request.GET.get('q','').strip()[:100]
  if term: q=q.filter(Q(username__icontains=term)|Q(email__icontains=term))
  return render(request,'management/users.html',{'items':q[:300],'query':term})
 
-@staff_member_required
+@staff_permission_required("rooms.export_booking")
 def export_csv(request):
  q=Booking.objects.select_related('room','user').order_by('start_time'); s=request.GET.get('status','')
  if s in ('pending','confirmed','cancelled'): q=q.filter(status=s)
@@ -64,37 +69,46 @@ def export_csv(request):
 
 @staff_member_required
 def room_edit(request, pk=None):
+    permission = "rooms.add_room" if pk is None else "rooms.change_room"
+    if not staff_has_perm(request.user, permission):
+        raise PermissionDenied
     room = get_object_or_404(Room, pk=pk) if pk is not None else None
     form = RoomForm(request.POST or None, request.FILES or None, instance=room)
     if request.method == "POST" and form.is_valid():
-        saved = form.save()
-        messages.success(request, "Переговорная сохранена.")
-        return redirect("management:rooms")
+        try:
+            form.save()
+        except ValidationError as error:
+            form.add_error(None, error)
+        else:
+            messages.success(request, "Переговорная сохранена.")
+            return redirect("management:rooms")
     return render(request, "management/room_form.html", {"form": form, "room": room})
 
 
-@staff_member_required
+@staff_permission_required("rooms.change_room")
 @require_POST
 def room_toggle(request, pk):
     room = get_object_or_404(Room, pk=pk)
     room.is_active = not room.is_active
-    room.save(update_fields=["is_active"])
-    messages.success(request, "Доступность комнаты изменена.")
+    try:
+        room.save(update_fields=["is_active"])
+    except ValidationError as error:
+        messages.error(request, "; ".join(error.messages))
+    else:
+        messages.success(request, "Доступность комнаты изменена.")
     return redirect("management:rooms")
 
 
-@staff_member_required
+@staff_permission_required("auth.change_user")
 def user_edit(request, pk):
     target = get_object_or_404(get_user_model(), pk=pk)
-    # Only a superuser can change account privileges or activation.
-    if not request.user.is_superuser:
-        from django.core.exceptions import PermissionDenied
+    if not can_edit_account(request.user, target):
         raise PermissionDenied
-    form = UserEditForm(request.POST or None, instance=target, allow_roles=True)
+    form = UserEditForm(request.POST or None, instance=target, allow_roles=request.user.is_superuser)
     if request.method == "POST" and form.is_valid():
-        if target.pk == request.user.pk and (not form.cleaned_data["is_staff"] or not form.cleaned_data["is_active"]):
+        if request.user.is_superuser and target.pk == request.user.pk and (not form.cleaned_data["is_staff"] or not form.cleaned_data["is_active"]):
             form.add_error(None, "Нельзя отключить собственный административный доступ.")
-        elif target.is_superuser and not form.cleaned_data["is_staff"]:
+        elif request.user.is_superuser and target.is_superuser and not form.cleaned_data["is_staff"]:
             form.add_error(None, "Нельзя снять права сотрудника с суперпользователя.")
         else:
             form.save()
@@ -103,18 +117,16 @@ def user_edit(request, pk):
     return render(request, "management/user_form.html", {"form": form, "target": target})
 
 
-@staff_member_required
+@staff_permission_required("rooms.view_booking")
 def analytics(request):
-    today = timezone.localdate()
-    raw_from = request.GET.get("from", "")
-    raw_to = request.GET.get("to", "")
+    today = rules.site_today()
     try:
-        start = date.fromisoformat(raw_from) if raw_from else today - timedelta(days=29)
-        end = date.fromisoformat(raw_to) if raw_to else today
-    except ValueError:
-        start, end = today - timedelta(days=29), today
-    if end < start or (end - start).days > 365:
-        messages.error(request, "Выберите корректный период не более 366 дней.")
+        start = rules.parse_calendar_date(request.GET.get("from"), default=today - timedelta(days=29))
+        end = rules.parse_calendar_date(request.GET.get("to"), default=today)
+        if end < start or (end - start).days > 365:
+            raise ValidationError("Выберите период не более 366 дней с окончанием не раньше начала.")
+    except ValidationError as error:
+        messages.error(request, "; ".join(error.messages))
         start, end = today - timedelta(days=29), today
     qs = Booking.objects.filter(start_time__date__gte=start, start_time__date__lte=end).exclude(status="cancelled")
     by_room = list(Room.objects.annotate(usage=Count("bookings", filter=Q(bookings__start_time__date__gte=start, bookings__start_time__date__lte=end, bookings__status__in=["pending", "confirmed"]))).order_by("-usage", "name")[:12])

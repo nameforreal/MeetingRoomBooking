@@ -4,10 +4,17 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from rooms.models import Booking,Room
+from django.contrib.auth.models import Permission
+
+def grant_staff(user):
+ user.user_permissions.add(*Permission.objects.filter(content_type__app_label="rooms"))
+ user.user_permissions.add(Permission.objects.get(codename="view_user", content_type__app_label="auth"))
+
 class ManagementTests(TestCase):
  def setUp(self):
   U=get_user_model(); self.staff=U.objects.create_user(username='manager',password='StrongPass123!',is_staff=True); self.user=U.objects.create_user(username='member',password='StrongPass123!')
-  self.room=Room.objects.create(name='Manager room',capacity=6); start=timezone.now()+timedelta(days=3); self.booking=Booking.objects.create(room=self.room,user=self.user,start_time=start,end_time=start+timedelta(hours=1))
+  grant_staff(self.staff)
+  self.room=Room.objects.create(name='Manager room',capacity=6); start=(timezone.now() + timedelta(days=3)).replace(hour=10, minute=0, second=0, microsecond=0); self.booking=Booking.objects.create(room=self.room,user=self.user,start_time=start,end_time=start+timedelta(hours=1))
  def test_staff_only(self):
   self.assertEqual(self.client.get(reverse('management:overview')).status_code,302); self.client.force_login(self.user); self.assertEqual(self.client.get(reverse('management:overview')).status_code,302)
  def test_staff_pages(self):
@@ -25,6 +32,7 @@ class ExtendedManagementTests(TestCase):
   self.staff=U.objects.create_user(username="staff2", password="TestPass123!", is_staff=True)
   self.admin=U.objects.create_superuser(username="admin2", password="TestPass123!", email="admin@example.com")
   self.member=U.objects.create_user(username="member2", password="TestPass123!")
+  grant_staff(self.staff)
   self.room=Room.objects.create(name="Test room", capacity=4)
 
  def test_staff_creates_and_edits_room(self):

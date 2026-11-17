@@ -6,14 +6,14 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta, datetime, time
-from django.utils.dateparse import parse_date
 from django.db.models import Q
 
 from .models import Room
-from .forms import BookingForm, ProfileForm
+from . import booking_operations as operations
+from . import booking_rules as rules
+from .forms import BookingForm, EditBookingForm, ProfileForm
 
 
 
@@ -90,16 +90,10 @@ def book_room(request, room_id):
         form = BookingForm(request.POST)
 
         if form.is_valid():
-            booking = form.save(commit=False)
-            booking.room = room
-            booking.user = request.user
-
             try:
-                with transaction.atomic():
-                    # PostgreSQL: serialize requests for the same room.
-                    # SQLite does not implement row-level SELECT FOR UPDATE.
-                    Room.objects.select_for_update().get(pk=room.pk)
-                    booking.save()
+                operations.create(actor=request.user, room=room,
+                                  start_time=form.cleaned_data["start_time"],
+                                  end_time=form.cleaned_data["end_time"])
             except ValidationError as error:
                 form.add_error(None, error)
             else:
@@ -111,20 +105,21 @@ def book_room(request, room_id):
     else:
         form = BookingForm()
 
-    now = timezone.localtime()
-    today = now.date()
-    chosen_date = parse_date(request.GET.get("date", ""))
-    if chosen_date is None or not today <= chosen_date <= today + timedelta(days=30):
+    now = timezone.localtime(timezone.now(), timezone.get_default_timezone())
+    today = rules.site_today()
+    try:
+        chosen_date = rules.booking_date(request.GET.get("date"), default=today)
+    except ValidationError as error:
+        messages.error(request, "; ".join(error.messages))
         chosen_date = today
-    day_start = timezone.make_aware(datetime.combine(chosen_date, time.min))
-    day_end = day_start + timedelta(days=1)
+    day_start, day_end = rules.day_bounds(chosen_date)
     occupied = list(Booking.objects.filter(
         room=room, status__in=["pending", "confirmed"],
         end_time__gt=day_start, start_time__lt=day_end,
     ).order_by("start_time"))
     slots = []
-    for hour in range(8, 20):
-        start = timezone.make_aware(datetime.combine(chosen_date, time(hour, 0)))
+    for hour in rules.SLOT_HOURS:
+        start = timezone.make_aware(datetime.combine(chosen_date, time(hour, 0)), timezone.get_default_timezone())
         end = start + timedelta(hours=1)
         busy = any(item.start_time < end and item.end_time > start for item in occupied)
         slots.append({"label": f"{hour:02d}:00", "end_label": f"{hour + 1:02d}:00", "busy": busy, "past": start <= now})
@@ -138,8 +133,9 @@ def book_room(request, room_id):
             "occupied": occupied,
             "slots": slots,
             "chosen_date": chosen_date.isoformat(),
-            "max_date": (today + timedelta(days=30)).isoformat(),
+            "max_date": rules.last_booking_date().isoformat(),
             "today": today.isoformat(),
+            "site_timezone": timezone.get_default_timezone_name(),
         }
     )
 
@@ -182,13 +178,12 @@ def cancel_booking(request, booking_id):
         user=request.user
     )
 
-    if booking.status != "cancelled":
-        booking.status = "cancelled"
-        booking.save(update_fields=["status"])
-        messages.success(
-            request,
-            "Бронирование отменено."
-        )
+    try:
+        operations.cancel(booking, actor=request.user, revision=request.POST.get("revision"))
+    except ValidationError as error:
+        messages.error(request, "; ".join(error.messages))
+    else:
+        messages.success(request, "Бронирование отменено.")
 
     return redirect("my_bookings")
 
@@ -245,24 +240,30 @@ def edit_booking(request, booking_id):
         return redirect("booking_detail", booking_id=booking.pk)
 
     if request.method == "POST":
-        form = BookingForm(request.POST, instance=booking)
+        form = EditBookingForm(request.POST, instance=booking)
         if form.is_valid():
             try:
-                with transaction.atomic():
-                    Room.objects.select_for_update().get(pk=booking.room_id)
-                    updated = form.save(commit=False)
-                    updated.save()
+                updated = operations.edit(
+                    booking, actor=request.user,
+                    revision=form.cleaned_data["revision"],
+                    room=form.cleaned_data["room"],
+                    start_time=form.cleaned_data["start_time"],
+                    end_time=form.cleaned_data["end_time"],
+                )
             except ValidationError as error:
                 form.add_error(None, error)
             else:
-                messages.success(request, "Время встречи успешно обновлено.")
+                messages.success(request, "Бронирование обновлено." + (
+                    " VIP-заявка ожидает подтверждения." if updated.status == "pending" else ""
+                ))
                 return redirect("booking_detail", booking_id=booking.pk)
     else:
-        form = BookingForm(instance=booking)
+        form = EditBookingForm(instance=booking)
 
     return render(request, "rooms/edit_booking.html", {
         "form": form,
         "booking": booking,
+        "site_timezone": timezone.get_default_timezone_name(),
     })
 
 

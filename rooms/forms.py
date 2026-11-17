@@ -3,23 +3,45 @@ from django.contrib.auth.models import User
 from django import forms
 from django.utils import timezone
 
-from .models import Booking
+from .models import Booking, Room
+from .booking_operations import parse_revision
+
+
+class RevisionField(forms.Field):
+    def to_python(self, value):
+        if value in self.empty_values and not self.required:
+            return None
+        try:
+            return parse_revision(value)
+        except forms.ValidationError as error:
+            raise forms.ValidationError(error.messages) from error
+
+
+class SiteSplitDateTimeField(forms.SplitDateTimeField):
+    def compress(self, data_list):
+        with timezone.override(timezone.get_default_timezone()):
+            try:
+                return super().compress(data_list)
+            except (ValueError, OverflowError) as exc:
+                raise forms.ValidationError("Укажите допустимые дату и время.") from exc
 
 
 class BookingForm(forms.ModelForm):
-    start_time = forms.SplitDateTimeField(
+    start_time = SiteSplitDateTimeField(
         label="Начало бронирования",
         widget=forms.SplitDateTimeWidget(
+            date_format="%Y-%m-%d", time_format="%H:%M:%S",
             date_attrs={"type": "date"},
-            time_attrs={"type": "time"},
+            time_attrs={"type": "time", "step": "any"},
         ),
     )
 
-    end_time = forms.SplitDateTimeField(
+    end_time = SiteSplitDateTimeField(
         label="Конец бронирования",
         widget=forms.SplitDateTimeWidget(
+            date_format="%Y-%m-%d", time_format="%H:%M:%S",
             date_attrs={"type": "date"},
-            time_attrs={"type": "time"},
+            time_attrs={"type": "time", "step": "any"},
         ),
     )
 
@@ -27,24 +49,29 @@ class BookingForm(forms.ModelForm):
         model = Booking
         fields = ["start_time", "end_time"]
 
-    def clean(self):
-        cleaned_data = super().clean()
+class EditBookingForm(BookingForm):
+    revision = RevisionField(widget=forms.HiddenInput)
 
-        start = cleaned_data.get("start_time")
-        end = cleaned_data.get("end_time")
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.initial["revision"] = self.instance.revision
 
-        if start and end:
-            if start >= end:
-                raise forms.ValidationError(
-                    "Время окончания должно быть позже начала."
-                )
+    room = forms.ModelChoiceField(
+        queryset=Room.objects.filter(is_active=True),
+        label="Переговорная комната",
+        required=False,
+    )
 
-            if start < timezone.now():
-                raise forms.ValidationError(
-                    "Нельзя бронировать прошедшее время."
-                )
+    class Meta(BookingForm.Meta):
+        fields = ["room", "start_time", "end_time"]
 
-        return cleaned_data
+    def clean_room(self):
+        # Keep existing time-only POST clients working.
+        room = self.cleaned_data.get("room") or self.instance.room
+        if not room.is_active:
+            raise forms.ValidationError("Комната недоступна для бронирования.")
+        return room
+
 
 class RegisterForm(UserCreationForm):
     username = forms.CharField(label='Имя пользователя', max_length=150, help_text='До 150 символов. Буквы, цифры и символы @/./+/-/_.')

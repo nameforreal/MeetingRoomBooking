@@ -2,15 +2,16 @@ from datetime import datetime, time, timedelta
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.utils import timezone
-from django.utils.dateparse import parse_date
+from django.contrib import messages
+from django.core.exceptions import ValidationError
+from rooms import booking_rules as rules
 from rooms.models import Booking, Room
 
 @login_required
 def overview(request):
     now = timezone.now()
     upcoming = Booking.objects.filter(user=request.user, end_time__gte=now).exclude(status='cancelled').select_related('room').order_by('start_time')[:6]
-    today_start = timezone.make_aware(datetime.combine(timezone.localdate(), time.min))
-    tomorrow_start = today_start + timedelta(days=1)
+    today_start, tomorrow_start = rules.day_bounds(rules.site_today())
     today_count = Booking.objects.filter(user=request.user, start_time__lt=tomorrow_start, end_time__gt=today_start).exclude(status='cancelled').count()
     return render(request, 'dashboard/overview.html', {
         'today_count': today_count,
@@ -22,13 +23,14 @@ def overview(request):
 
 @login_required
 def schedule(request):
-    today = timezone.localdate()
-    selected = parse_date(request.GET.get('date', '')) or today
-    if selected < today or selected > today + timedelta(days=60):
+    today = rules.site_today()
+    try:
+        selected = rules.booking_date(request.GET.get('date'), default=today)
+    except ValidationError as error:
+        messages.error(request, "; ".join(error.messages))
         selected = today
     rooms = list(Room.objects.filter(is_active=True).order_by('name'))
-    start = timezone.make_aware(datetime.combine(selected, time.min))
-    end = timezone.make_aware(datetime.combine(selected + timedelta(days=1), time.min))
+    start, end = rules.day_bounds(selected)
     occupied = Booking.objects.filter(room__in=rooms, status__in=['pending','confirmed'], start_time__lt=end, end_time__gt=start).select_related('room')
     by_room = {}
     for item in occupied:
@@ -37,10 +39,10 @@ def schedule(request):
     now = timezone.now()
     for room in rooms:
         cells = []
-        for hour in range(8, 20):
-            slot_start = timezone.make_aware(datetime.combine(selected, time(hour)))
+        for hour in rules.SLOT_HOURS:
+            slot_start = timezone.make_aware(datetime.combine(selected, time(hour)), timezone.get_default_timezone())
             slot_end = slot_start + timedelta(hours=1)
             busy = any(b.start_time < slot_end and b.end_time > slot_start for b in by_room.get(room.pk, []))
             cells.append({'hour': hour, 'busy': busy, 'past': slot_start <= now})
         rows.append({'room': room, 'cells': cells})
-    return render(request, 'dashboard/schedule.html', {'rows': rows, 'hours': range(8,20), 'selected': selected.isoformat(), 'today': today.isoformat(), 'max_date': (today+timedelta(days=60)).isoformat()})
+    return render(request, 'dashboard/schedule.html', {'site_timezone': timezone.get_default_timezone_name(), 'rows': rows, 'hours': rules.SLOT_HOURS, 'selected': selected.isoformat(), 'today': today.isoformat(), 'max_date': rules.last_booking_date().isoformat()})
