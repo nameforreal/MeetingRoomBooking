@@ -10,6 +10,7 @@ from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
 from .permissions import staff_has_perm
+from . import audit
 
 FIELDS = ("room_id", "user_id", "start_time", "end_time", "status", "revision")
 MAX_REVISION = 2147483647
@@ -59,9 +60,10 @@ def create(*, actor, room, start_time, end_time, user=None):
     from .models import Booking
     booking = Booking(room=room, user=user or actor, start_time=start_time, end_time=end_time)
     authorize(actor, booking, "create")
-    return persist(booking)
+    return persist(booking, actor=actor, operation="create")
 
 
+@audit.operation_context
 def create_once(*, actor, key, room_id, start_time, end_time, user=None):
     from .booking_idempotency import create as idempotent_create
     return idempotent_create(actor=actor, key=key, room_id=room_id,
@@ -92,6 +94,7 @@ def reject(booking, *, actor, revision=None):
     return persist(booking, actor=actor, operation="reject", revision=revision)
 
 
+@audit.operation_context
 def save_room(room, *, force_insert=False, force_update=False, using=None, update_fields=None):
     """Room first, then all affected bookings by PK; no cross-room locks here."""
     from .models import Room, Booking
@@ -113,6 +116,10 @@ def save_room(room, *, force_insert=False, force_update=False, using=None, updat
                     raise ValidationError(STALE)
         models.Model.save(room, using=alias, force_insert=force_insert,
                           force_update=force_update, update_fields=update_fields)
+        before, after = audit.room_state(current), audit.room_state(room)
+        if current is not None and before != after:
+            action = ("room.archived" if not room.is_active else "room.restored") if before["is_active"] != after["is_active"] else "room.type_changed"
+            audit.record(action=action, obj=room, before=before, after=after)
         if current is not None and not current.is_vip and room.is_vip:
             # This changes only approval, not scheduling. Legacy time ranges may
             # be outside today's booking horizon; do not edit or discard them.
@@ -120,12 +127,16 @@ def save_room(room, *, force_insert=False, force_update=False, using=None, updat
                 room_id=room.pk, status="confirmed", end_time__gt=timezone.now(),
             ).order_by("pk").select_for_update()
             for booking in affected:
+                before_booking = audit.booking_state(booking)
                 booking.status = "pending"
                 booking.revision = next_revision(booking.revision)
                 models.Model.save(booking, using=alias, update_fields=["status", "revision"])
+                audit.record(action="booking.approval_reset", obj=booking,
+                             before=before_booking, after=audit.booking_state(booking))
         room._room_flags = {field: getattr(room, field) for field in ("is_vip", "is_active")}
 
 
+@audit.operation_context
 def persist(booking, *, actor=None, operation="save", revision=None, update_fields=None, using=None,
             force_insert=False, force_update=False):
     """Also used by Model.save(), so ordinary ORM writes obey the same locks.
@@ -155,6 +166,7 @@ def persist(booking, *, actor=None, operation="save", revision=None, update_fiel
                     raise ValidationError(STALE)
                 if actor is not None:
                     authorize(actor, current, operation)
+                before = audit.booking_state(current)
                 expected_revision = parse_revision(revision)
                 if operation == "cancel" and current.status == "cancelled":
                     if expected_revision > current.revision:
@@ -187,6 +199,8 @@ def persist(booking, *, actor=None, operation="save", revision=None, update_fiel
             elif booking.pk is not None:
                 # A reconstructed instance must not overwrite an existing PK.
                 raise ValidationError("Создание бронирования с заданным ID запрещено.")
+            else:
+                before = {}
             if booking.room_id not in rooms:
                 raise ValidationError("Комната недоступна.")
             booking.room = rooms[booking.room_id]
@@ -197,6 +211,9 @@ def persist(booking, *, actor=None, operation="save", revision=None, update_fiel
             write_fields = None if update_fields is None else set(update_fields) | {"status", "revision"}
             models.Model.save(booking, using=alias, force_insert=force_insert,
                               force_update=force_update, update_fields=write_fields)
+            after = audit.booking_state(booking)
+            audit.record(action=audit.booking_action(before, after, operation), obj=booking,
+                         actor=actor, before=before, after=after)
             booking._booking_snapshot = snapshot(booking)
             return booking
     except IntegrityError as exc:

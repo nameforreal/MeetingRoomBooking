@@ -1,9 +1,14 @@
 from django.db import models
 from .querysets import RoomQuerySet
+from django.db.models.deletion import ProtectedError
+from uuid import uuid4
 
 
 class Room(models.Model):
     objects = RoomQuerySet.as_manager()
+
+    def delete(self, *args, **kwargs):
+        raise ProtectedError("Use the controlled deletion procedure for rooms without history.", [self])
 
     @classmethod
     def from_db(cls, db, field_names, values):
@@ -58,6 +63,8 @@ class Room(models.Model):
         return self.name
 
     class Meta:
+        base_manager_name = "objects"
+        default_manager_name = "objects"
         verbose_name = "Переговорная комната"
         verbose_name_plural = "Переговорные комнаты"
         ordering = ["name"]
@@ -152,14 +159,14 @@ class Booking(models.Model):
 
     room = models.ForeignKey(
         Room,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="bookings",
         verbose_name="Переговорная комната"
     )
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="bookings",
         verbose_name="Пользователь"
     )
@@ -247,6 +254,9 @@ class Booking(models.Model):
     def __str__(self):
         return f"{self.room} — {self.start_time}"
 
+    def delete(self, *args, **kwargs):
+        raise ProtectedError("Booking history must not be deleted.", [self])
+
     class Meta:
         base_manager_name = "objects"
         default_manager_name = "objects"
@@ -254,3 +264,75 @@ class Booking(models.Model):
         verbose_name = "Бронирование"
         verbose_name_plural = "Бронирования"
         ordering = ["-start_time"]
+
+
+class AuditEventQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise TypeError("Audit events are immutable.")
+
+    def delete(self):
+        raise ProtectedError("Audit history must not be deleted.", [])
+
+    def bulk_create(self, objs, **kwargs):
+        raise TypeError("Audit events must be appended by the operation recorder.")
+
+    def bulk_update(self, objs, fields, **kwargs):
+        raise TypeError("Audit events are immutable.")
+
+    def update_or_create(self, *args, **kwargs):
+        raise TypeError("Audit events are immutable.")
+
+
+class AuditEvent(models.Model):
+    """Append-only business history. Insert only inside the owning operation."""
+    objects = AuditEventQuerySet.as_manager()
+    occurred_at = models.DateTimeField(default=timezone.now, editable=False)
+    action = models.CharField(max_length=40)
+    source = models.CharField(max_length=20, choices=[(x, x) for x in
+                               ("html", "api", "django_admin", "management", "system")])
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT, related_name="+")
+    object_type = models.CharField(max_length=12, choices=[(x, x) for x in ("booking", "room", "user")])
+    object_id = models.PositiveBigIntegerField()
+    booking = models.ForeignKey(Booking, null=True, on_delete=models.PROTECT, related_name="audit_events")
+    room = models.ForeignKey(Room, null=True, on_delete=models.PROTECT, related_name="audit_events")
+    subject_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT, related_name="+")
+    previous_room = models.ForeignKey(Room, null=True, on_delete=models.PROTECT, related_name="+")
+    new_room = models.ForeignKey(Room, null=True, on_delete=models.PROTECT, related_name="+")
+    previous_owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT, related_name="+")
+    new_owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT, related_name="+")
+    before = models.JSONField(default=dict)
+    after = models.JSONField(default=dict)
+    changed_fields = models.JSONField(default=list)
+    revision_before = models.PositiveIntegerField(null=True)
+    revision_after = models.PositiveIntegerField(null=True)
+    correlation_id = models.UUIDField(default=uuid4, editable=False)
+    schema_version = models.PositiveSmallIntegerField(default=1)
+
+    def save(self, *args, **kwargs):
+        raise TypeError("Audit events may only be appended by the operation recorder.")
+
+    def delete(self, *args, **kwargs):
+        raise ProtectedError("Audit history must not be deleted.", [self])
+
+    class Meta:
+        base_manager_name = "objects"
+        default_manager_name = "objects"
+        default_permissions = ("view",)
+        ordering = ("-occurred_at", "-id")
+        indexes = [
+            models.Index(fields=["occurred_at", "id"], name="audit_time_idx"),
+            models.Index(fields=["actor", "occurred_at"], name="audit_actor_time_idx"),
+            models.Index(fields=["action", "occurred_at"], name="audit_action_time_idx"),
+            models.Index(fields=["correlation_id", "id"], name="audit_correlation_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=["booking", "revision_after"],
+                                    condition=models.Q(booking__isnull=False) & ~models.Q(action="baseline"),
+                                    name="audit_booking_revision_unique"),
+            models.UniqueConstraint(fields=["booking"], condition=models.Q(action="baseline"),
+                                    name="audit_booking_baseline_unique"),
+            models.CheckConstraint(condition=models.Q(source="system") | models.Q(actor__isnull=False),
+                                   name="audit_actor_required"),
+            models.CheckConstraint(condition=models.Q(source__in=["html", "api", "django_admin", "management", "system"]),
+                                   name="audit_source_valid"),
+        ]

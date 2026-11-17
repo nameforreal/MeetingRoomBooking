@@ -174,7 +174,7 @@ class RoleTests(TestCase):
         room = Room.objects.get(name="html")
         self.assertEqual(self.client.post(f"/management/rooms/{room.pk}/edit/", {"name": "updated", "capacity": 6, "is_active": "on"}).status_code, 302)
         for expected in [False, True]:
-            self.assertEqual(self.client.post(f"/management/rooms/{room.pk}/toggle/").status_code, 302)
+            self.assertEqual(self.client.post(f"/management/rooms/{room.pk}/toggle/", {"is_active": str(expected).lower()}).status_code, 302)
             room.refresh_from_db()
             self.assertEqual(room.is_active, expected)
         self.assertEqual(self.client.post(f"/admin/rooms/room/{room.pk}/delete/", {"post": "yes"}).status_code, 403)

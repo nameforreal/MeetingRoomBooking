@@ -270,8 +270,8 @@ class CreationIdempotencyTests(CreationFixtures, TestCase):
     def test_anonymous_and_inactive_replay_denied(self):
         self.post_api()
         self.assertIn(self.post_api(client=APIClient()).status_code, (401, 403))
-        self.user.is_active = False
-        self.user.save(update_fields=["is_active"])
+        from .account_operations import set_active
+        set_active(self.user, False)
         self.assertEqual(self.post_api().status_code, 403)
         self.assert_one_result()
 

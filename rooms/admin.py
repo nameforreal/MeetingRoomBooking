@@ -3,7 +3,9 @@ from django.contrib import admin, messages
 from django.http import HttpResponse
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from .models import Room, Booking
+from .models import Room, Booking, AuditEvent
+from . import audit, account_operations
+from urllib.parse import urlencode
 from . import booking_operations as operations
 from .forms import RevisionField, IdempotencyKeyField
 from .booking_idempotency import IdempotencyError
@@ -17,8 +19,33 @@ from django.contrib.auth.admin import UserAdmin
 from django.core.exceptions import PermissionDenied
 
 
+class HistoryAdminMixin:
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def delete_model(self, request, obj):
+        raise PermissionDenied
+
+    def delete_queryset(self, request, queryset):
+        raise PermissionDenied
+
+    def changeform_view(self, request, *args, **kwargs):
+        with audit.context(source="django_admin", actor=request.user):
+            return super().changeform_view(request, *args, **kwargs)
+
+    def changelist_view(self, request, *args, **kwargs):
+        with audit.context(source="django_admin", actor=request.user):
+            return super().changelist_view(request, *args, **kwargs)
+
+    def history_view(self, request, object_id, extra_context=None):
+        if not staff_has_perm(request.user, "rooms.view_auditevent"):
+            raise PermissionDenied
+        query = urlencode({"object_type__exact": self.model._meta.model_name, "object_id__exact": object_id})
+        return HttpResponseRedirect(reverse("admin:rooms_auditevent_changelist") + "?" + query)
+
+
 @admin.register(Room)
-class RoomAdmin(admin.ModelAdmin):
+class RoomAdmin(HistoryAdminMixin, admin.ModelAdmin):
     def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
         try:
             return super().changeform_view(request, object_id, form_url, extra_context)
@@ -68,7 +95,7 @@ class BookingAdminForm(forms.ModelForm):
 
 
 @admin.register(Booking)
-class BookingAdmin(admin.ModelAdmin):
+class BookingAdmin(HistoryAdminMixin, admin.ModelAdmin):
     form = BookingAdminForm
     change_list_template = "admin/rooms/booking/change_list.html"
     list_display = ("room", "user", "start_time", "end_time", "status", "created_at")
@@ -207,12 +234,17 @@ admin.site.unregister(get_user_model())
 
 
 @admin.register(get_user_model())
-class RestrictedUserAdmin(UserAdmin):
+class RestrictedUserAdmin(HistoryAdminMixin, UserAdmin):
     def has_add_permission(self, request):
         return request.user.is_superuser and super().has_add_permission(request)
 
     def has_delete_permission(self, request, obj=None):
-        return request.user.is_superuser and super().has_delete_permission(request, obj)
+        return False
+
+    def save_model(self, request, obj, form, change):
+        fields = {field.name for field in obj._meta.concrete_fields if not field.primary_key}
+        account_operations.save_account(obj, actor=request.user,
+                                        fields=fields.intersection(form.changed_data) if change else None)
 
     def has_change_permission(self, request, obj=None):
         if obj is None:
@@ -228,3 +260,35 @@ class RestrictedUserAdmin(UserAdmin):
         if not request.user.is_superuser:
             raise PermissionDenied
         return super().user_change_password(request, id, form_url)
+
+
+@admin.register(AuditEvent)
+class AuditEventAdmin(admin.ModelAdmin):
+    list_display = ("occurred_at", "action", "object_type", "object_id", "actor", "source", "revision_after", "correlation_id")
+    list_filter = ("source", "action", "object_type", "occurred_at")
+    search_fields = ("=object_id", "=actor__id", "=correlation_id")
+    readonly_fields = tuple(field.name for field in AuditEvent._meta.fields)
+    list_per_page = 50
+    actions = None
+
+    def has_view_permission(self, request, obj=None):
+        return staff_has_perm(request.user, "rooms.view_auditevent")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def delete_model(self, request, obj):
+        raise PermissionDenied
+
+    def delete_queryset(self, request, queryset):
+        raise PermissionDenied
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("actor", "booking", "room", "subject_user",
+                                                           "previous_room", "new_room", "previous_owner", "new_owner")

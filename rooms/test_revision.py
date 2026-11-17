@@ -309,6 +309,16 @@ class RevisionTests(RevisionFixtures, TestCase):
 
     def test_zero_legacy_revision_and_counter_limit(self):
         # Isolated fixture only: emulate a pre-revision row / exhausted counter.
+        # Insert a truly legacy row, rather than rewinding an already audited revision.
+        legacy_room = Room.objects.create(name="Legacy revision")
+        with connection.cursor() as cursor:
+            cursor.execute("""INSERT INTO rooms_booking
+                (room_id,user_id,start_time,end_time,status,created_at,revision)
+                VALUES (%s,%s,%s,%s,'pending',%s,0) RETURNING id""",
+                [legacy_room.pk, self.user.pk, self.start, self.end, timezone.now()])
+            legacy_pk = cursor.fetchone()[0]
+        self.booking = Booking.objects.get(pk=legacy_pk)
+        self.url = f"/api/bookings/{legacy_pk}/"
         for revision in [0, operations.MAX_REVISION]:
             with connection.cursor() as cursor:
                 cursor.execute("UPDATE rooms_booking SET revision = %s WHERE id = %s", [revision, self.booking.pk])

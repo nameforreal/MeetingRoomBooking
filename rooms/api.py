@@ -12,6 +12,7 @@ from . import booking_operations as operations
 from .permissions import RoomPermissions, staff_has_perm
 from . import booking_rules as rules
 from .booking_idempotency import IdempotencyError, validate_key
+from .audit import APIContextMixin
 
 
 def query_date(params, key, *, booking=False):
@@ -128,7 +129,7 @@ class BookingSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"booking": exc.messages}) from exc
 
 
-class RoomViewSet(viewsets.ModelViewSet):
+class RoomViewSet(APIContextMixin, viewsets.ModelViewSet):
     serializer_class = RoomSerializer
     http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
 
@@ -178,7 +179,7 @@ class RoomViewSet(viewsets.ModelViewSet):
         })
 
 
-class BookingViewSet(viewsets.ModelViewSet):
+class BookingViewSet(APIContextMixin, viewsets.ModelViewSet):
     serializer_class = BookingSerializer
     permission_classes = [IsAuthenticated]
     http_method_names = ["get", "post", "put", "patch", "head", "options"]

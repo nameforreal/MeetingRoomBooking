@@ -1,7 +1,11 @@
 from django.db import models
+from django.db.models.deletion import ProtectedError
 
 
 class RoomQuerySet(models.QuerySet):
+    def delete(self):
+        raise ProtectedError("Use the controlled deletion procedure for rooms without history.", [])
+
     def bulk_create(self, objs, batch_size=None, ignore_conflicts=False,
                     update_conflicts=False, update_fields=None, unique_fields=None):
         if update_conflicts and {"is_vip", "is_active"}.intersection(update_fields or ()):
@@ -24,6 +28,9 @@ class RoomQuerySet(models.QuerySet):
 
 
 class BookingQuerySet(models.QuerySet):
+    def delete(self):
+        raise ProtectedError("Booking history must not be deleted.", [])
+
     def update_or_create(self, *args, **kwargs):
         # Django locks the booking first, which would invert our lock order.
         raise TypeError("Booking.update_or_create() is disabled; use rooms.booking_operations.")

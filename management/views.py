@@ -17,6 +17,8 @@ from rooms import booking_operations as operations
 from rooms import booking_rules as rules
 from rooms.permissions import staff_permission_required, staff_has_perm, can_edit_account
 from django.core.exceptions import PermissionDenied
+from rooms.audit import request_context
+from rooms.account_operations import save_account
 
 @staff_permission_required("rooms.view_booking")
 def overview(request):
@@ -33,6 +35,7 @@ def bookings(request):
 
 @staff_permission_required("rooms.change_booking")
 @require_POST
+@request_context("management")
 def status(request,pk):
  b=get_object_or_404(Booking.objects.select_related('room'),pk=pk); target=request.POST.get('status')
  if target not in ('confirmed','cancelled') or (target=='confirmed' and b.status!='pending'):
@@ -68,6 +71,7 @@ def export_csv(request):
 
 
 @staff_member_required
+@request_context("management")
 def room_edit(request, pk=None):
     permission = "rooms.add_room" if pk is None else "rooms.change_room"
     if not staff_has_perm(request.user, permission):
@@ -87,9 +91,13 @@ def room_edit(request, pk=None):
 
 @staff_permission_required("rooms.change_room")
 @require_POST
+@request_context("management")
 def room_toggle(request, pk):
     room = get_object_or_404(Room, pk=pk)
-    room.is_active = not room.is_active
+    target = request.POST.get("is_active")
+    if target not in ("true", "false"):
+        return HttpResponse("Передайте целевое состояние комнаты (is_active=true/false).", status=400)
+    room.is_active = target == "true"
     try:
         room.save(update_fields=["is_active"])
     except ValidationError as error:
@@ -100,6 +108,7 @@ def room_toggle(request, pk):
 
 
 @staff_permission_required("auth.change_user")
+@request_context("management")
 def user_edit(request, pk):
     target = get_object_or_404(get_user_model(), pk=pk)
     if not can_edit_account(request.user, target):
@@ -111,9 +120,13 @@ def user_edit(request, pk):
         elif request.user.is_superuser and target.is_superuser and not form.cleaned_data["is_staff"]:
             form.add_error(None, "Нельзя снять права сотрудника с суперпользователя.")
         else:
-            form.save()
-            messages.success(request, "Пользователь обновлён.")
-            return redirect("management:users")
+            try:
+                save_account(form.instance, actor=request.user, fields=form.changed_data)
+            except ValidationError as error:
+                form.add_error(None, error)
+            else:
+                messages.success(request, "Пользователь обновлён.")
+                return redirect("management:users")
     return render(request, "management/user_form.html", {"form": form, "target": target})
 
 

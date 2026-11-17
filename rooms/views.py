@@ -15,6 +15,7 @@ from . import booking_operations as operations
 from . import booking_rules as rules
 from .forms import CreateBookingForm, EditBookingForm, ProfileForm
 from .booking_idempotency import IdempotencyError
+from .audit import request_context
 
 
 
@@ -80,6 +81,7 @@ def catalog(request):
 
 
 @login_required
+@request_context("html")
 def book_room(request, room_id):
     response_status = 200
     if request.method == "POST":
@@ -176,6 +178,7 @@ def my_bookings(request):
 
 @login_required
 @require_POST
+@request_context("html")
 def cancel_booking(request, booking_id):
     booking = get_object_or_404(
         Booking,
@@ -233,6 +236,7 @@ def booking_detail(request, booking_id):
 
 
 @login_required
+@request_context("html")
 def edit_booking(request, booking_id):
     booking = get_object_or_404(
         Booking.objects.select_related("room"),

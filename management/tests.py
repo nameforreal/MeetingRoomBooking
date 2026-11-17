@@ -53,7 +53,7 @@ class ExtendedManagementTests(TestCase):
   self.assertTrue(self.room.is_active)
   self.client.force_login(self.staff)
   self.assertEqual(self.client.get(url).status_code,405)
-  self.client.post(url)
+  self.client.post(url,{"is_active":"false"})
   self.room.refresh_from_db()
   self.assertFalse(self.room.is_active)
 
