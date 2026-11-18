@@ -7,6 +7,7 @@ from django.utils import timezone
 from .models import Booking, Room
 from .booking_operations import parse_revision
 from .booking_idempotency import validate_key
+from .account_operations import save_profile
 
 
 class IdempotencyKeyField(forms.CharField):
@@ -112,6 +113,17 @@ class RegisterForm(UserCreationForm):
 
 
 class ProfileForm(forms.ModelForm):
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if commit:
+            self.instance = save_profile(
+                actor=instance,
+                first_name=self.cleaned_data["first_name"],
+                last_name=self.cleaned_data["last_name"],
+                email=self.cleaned_data["email"],
+            )
+        return self.instance
+
     class Meta:
         model = User
         fields = ["first_name", "last_name", "email"]

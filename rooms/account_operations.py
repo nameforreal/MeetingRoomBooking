@@ -7,6 +7,32 @@ from . import audit
 from .permissions import can_edit_account
 
 
+class ProfileUnavailable(PermissionDenied):
+    """The authenticated account disappeared or was deactivated before saving."""
+
+
+@audit.operation_context
+def save_profile(*, actor, first_name, last_name, email):
+    """Save only self-service fields, using the same row lock as deactivation."""
+    if not actor.is_authenticated or actor.pk is None:
+        raise ProfileUnavailable
+    alias = actor._state.db or "default"
+    with transaction.atomic(using=alias):
+        lock_options = {"no_key": True} if connections[alias].vendor == "postgresql" else {}
+        try:
+            current = get_user_model().objects.using(alias).select_for_update(**lock_options).get(pk=actor.pk)
+        except get_user_model().DoesNotExist as error:
+            raise ProfileUnavailable from error
+        if not current.is_active:
+            raise ProfileUnavailable
+        current.first_name = first_name
+        current.last_name = last_name
+        current.email = email
+        # No activity permit is needed: never write security fields from actor.
+        models.Model.save(current, using=alias, update_fields=["first_name", "last_name", "email"])
+        return current
+
+
 @audit.operation_context
 def save_account(user, *, actor=None, fields=None):
     alias = user._state.db or "default"

@@ -1,4 +1,5 @@
-from django.contrib.auth import login
+from django.contrib.auth import SESSION_KEY, login, logout
+from django.contrib.auth.views import redirect_to_login
 from .forms import RegisterForm
 from django.views.decorators.http import require_POST
 from .models import Booking
@@ -16,6 +17,7 @@ from . import booking_rules as rules
 from .forms import CreateBookingForm, EditBookingForm, ProfileForm
 from .booking_idempotency import IdempotencyError
 from .audit import request_context
+from .account_operations import ProfileUnavailable
 
 
 
@@ -276,12 +278,24 @@ def edit_booking(request, booking_id):
     })
 
 
-@login_required
+def _end_profile_session(request):
+    logout(request)
+    messages.error(request, "Учётная запись недоступна или сеанс недействителен. Войдите снова; если доступ отключён, обратитесь к администратору.")
+    return redirect_to_login(request.get_full_path())
+
+
 def profile(request):
+    if not request.user.is_authenticated:
+        if SESSION_KEY in request.session:
+            return _end_profile_session(request)
+        return redirect_to_login(request.get_full_path())
     if request.method == "POST":
         form = ProfileForm(request.POST, instance=request.user)
         if form.is_valid():
-            form.save()
+            try:
+                form.save()
+            except ProfileUnavailable:
+                return _end_profile_session(request)
             messages.success(request, "Данные профиля сохранены.")
             return redirect("profile")
     else:
