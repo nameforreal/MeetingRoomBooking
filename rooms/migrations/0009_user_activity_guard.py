@@ -1,6 +1,7 @@
 """PostgreSQL-only, fail-closed guard for the standard auth.User.is_active."""
 from django.conf import settings
 from django.db import migrations
+from rooms.migration_safety import protect_booking_history
 
 
 def install_guard(apps, schema_editor):
@@ -40,4 +41,6 @@ def remove_guard(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [("rooms", "0008_booking_baselines")]
-    operations = [migrations.RunPython(install_guard, remove_guard)]
+    operations = [migrations.RunPython(install_guard, remove_guard),
+                  # Runs FIRST on reverse, before dropping the trigger/function.
+                  migrations.RunPython(migrations.RunPython.noop, protect_booking_history)]

@@ -1,4 +1,3 @@
-import csv
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import get_user_model
@@ -11,7 +10,7 @@ from django.db.models import Sum, F, ExpressionWrapper, DurationField
 from datetime import timedelta, date
 from .forms import RoomForm, UserEditForm
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from rooms.models import Booking,Room
 from rooms import booking_operations as operations
 from rooms import booking_rules as rules
@@ -19,6 +18,8 @@ from rooms.permissions import staff_permission_required, staff_has_perm, can_edi
 from django.core.exceptions import PermissionDenied
 from rooms.audit import request_context
 from rooms.account_operations import save_account
+from rooms.csv_export import export_bookings
+from .booking_filters import filtered_bookings
 
 @staff_permission_required("rooms.view_booking")
 def overview(request):
@@ -27,10 +28,8 @@ def overview(request):
 
 @staff_permission_required("rooms.view_booking")
 def bookings(request):
- q=Booking.objects.select_related('room','user').order_by('-start_time'); s=request.GET.get('status',''); term=request.GET.get('q','').strip()[:100]
- if s in ('pending','confirmed','cancelled'): q=q.filter(status=s)
- else: s=''
- if term: q=q.filter(Q(room__name__icontains=term)|Q(user__username__icontains=term)|Q(user__email__icontains=term))
+ q,s,term=filtered_bookings(request.GET)
+ q=q.order_by('-start_time')
  return render(request,'management/bookings.html',{'items':q[:300],'count':q.count(),'status_filter':s,'query':term})
 
 @staff_permission_required("rooms.change_booking")
@@ -61,13 +60,10 @@ def users(request):
  return render(request,'management/users.html',{'items':q[:300],'query':term})
 
 @staff_permission_required("rooms.export_booking")
+@require_GET
 def export_csv(request):
- q=Booking.objects.select_related('room','user').order_by('start_time'); s=request.GET.get('status','')
- if s in ('pending','confirmed','cancelled'): q=q.filter(status=s)
- response=HttpResponse(content_type='text/csv; charset=utf-8'); response['Content-Disposition']='attachment; filename="meetingroom-bookings.csv"'; response.write('\ufeff')
- w=csv.writer(response,delimiter=';'); w.writerow(['ID','Переговорная','Пользователь','Email','Начало','Окончание','Статус'])
- for b in q: w.writerow([b.pk,b.room.name,b.user.username,b.user.email,timezone.localtime(b.start_time).strftime('%d.%m.%Y %H:%M'),timezone.localtime(b.end_time).strftime('%d.%m.%Y %H:%M'),b.get_status_display()])
- return response
+ q,_,_=filtered_bookings(request.GET)
+ return export_bookings(q)
 
 
 @staff_member_required

@@ -1,4 +1,5 @@
 from django.db import migrations, models
+from rooms.migration_safety import protect_booking_history
 
 
 def add_overlap_constraint(apps, schema_editor):
@@ -52,4 +53,5 @@ class Migration(migrations.Migration):
         ),
         # PostgreSQL-only DB constraint; SQLite supports the application checks.
         migrations.RunPython(add_overlap_constraint, remove_overlap_constraint),
+        migrations.RunPython(migrations.RunPython.noop, protect_booking_history),
     ]

@@ -1,10 +1,8 @@
-import csv
 from django.contrib import admin, messages
-from django.http import HttpResponse
-from django.utils import timezone
 from django.core.exceptions import ValidationError
 from .models import Room, Booking, AuditEvent
 from . import audit, account_operations
+from .csv_export import export_bookings
 from urllib.parse import urlencode
 from . import booking_operations as operations
 from .forms import RevisionField, IdempotencyKeyField
@@ -213,19 +211,10 @@ class BookingAdmin(HistoryAdminMixin, admin.ModelAdmin):
     def export_bookings_csv(self, request, queryset):
         if not staff_has_perm(request.user, "rooms.export_booking"):
             raise PermissionDenied
-        response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
-        response["Content-Disposition"] = 'attachment; filename="meetingroom-bookings.csv"'
-        writer = csv.writer(response, delimiter=";")
-        writer.writerow(["ID", "Переговорная", "Пользователь", "Email", "Начало", "Окончание", "Статус", "Создано"])
-        for booking in queryset.select_related("room", "user").order_by("start_time"):
-            writer.writerow([
-                booking.pk, booking.room.name, booking.user.username, booking.user.email,
-                timezone.localtime(booking.start_time).strftime("%d.%m.%Y %H:%M"),
-                timezone.localtime(booking.end_time).strftime("%d.%m.%Y %H:%M"),
-                booking.get_status_display(),
-                timezone.localtime(booking.created_at).strftime("%d.%m.%Y %H:%M"),
-            ])
-        return response
+        if request.POST.get("select_across", "0") != "0":
+            self.message_user(request, "Для экспорта выберите конкретные записи. Экспорт всех результатов поиска этим действием запрещён.", messages.ERROR)
+            return
+        return export_bookings(queryset, include_created=True)
 
 
 # Standard UserAdmin exposes groups and user_permissions to change_user holders.

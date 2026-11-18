@@ -3,6 +3,7 @@
 import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
+from rooms.migration_safety import protect_booking_history
 
 
 class Migration(migrations.Migration):
@@ -36,4 +37,5 @@ class Migration(migrations.Migration):
                 'constraints': [models.UniqueConstraint(fields=('actor', 'operation', 'key'), name='booking_creation_key_unique'), models.CheckConstraint(condition=models.Q(models.Q(('booking__isnull', True), ('completed_at__isnull', True), ('response_payload__isnull', True)), models.Q(('booking__isnull', False), ('completed_at__isnull', False), ('response_payload__isnull', False)), _connector='OR'), name='booking_creation_result_consistent')],
             },
         ),
+        migrations.RunPython(migrations.RunPython.noop, protect_booking_history),
     ]

@@ -5,12 +5,11 @@ import django.utils.timezone
 import uuid
 from django.conf import settings
 from django.db import migrations, models
-from django.db.migrations.exceptions import IrreversibleError
+from rooms.migration_safety import protect_booking_history
 
 
 def preserve_history_on_reverse(apps, schema_editor):
-    if apps.get_model("rooms", "AuditEvent").objects.using(schema_editor.connection.alias).exists():
-        raise IrreversibleError("Cannot drop a nonempty audit journal. Preserve history before schema rollback.")
+    protect_booking_history(apps, schema_editor)
 
 
 class Migration(migrations.Migration):

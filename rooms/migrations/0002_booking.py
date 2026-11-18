@@ -3,6 +3,7 @@
 import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
+from rooms.migration_safety import protect_booking_history
 
 
 class Migration(migrations.Migration):
@@ -30,4 +31,5 @@ class Migration(migrations.Migration):
                 'ordering': ['-start_time'],
             },
         ),
+        migrations.RunPython(migrations.RunPython.noop, protect_booking_history),
     ]

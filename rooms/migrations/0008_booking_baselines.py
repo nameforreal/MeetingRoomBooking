@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from django.db import migrations
 from django.utils import timezone
+from rooms.migration_safety import protect_booking_history
 
 
 def snapshot_existing(apps, schema_editor):
@@ -42,5 +43,5 @@ def snapshot_existing(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [("rooms", "0007_audit_history")]
-    # Reversing this step must not delete already captured history.
-    operations = [migrations.RunPython(snapshot_existing, migrations.RunPython.noop)]
+    # Captured history cannot be reversed; empty installations can roll back.
+    operations = [migrations.RunPython(snapshot_existing, protect_booking_history)]
