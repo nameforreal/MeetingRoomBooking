@@ -1,0 +1,28 @@
+groups:
+  - name: meetingroom
+    rules:
+      - alert: ApplicationDown
+        expr: up{job="meetingroom"} == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations: {summary: 'Django scrape unavailable'}
+      - alert: DatabaseUnavailable
+        expr: mrb_database_up == 0
+        for: 15s
+        labels: {severity: critical}
+        annotations: {summary: 'PostgreSQL SQL probe failed'}
+      - alert: RedisUnavailable
+        expr: mrb_cache_up == 0
+        for: 15s
+        labels: {severity: warning}
+        annotations: {summary: 'Disposable cache unavailable; check Redis'}
+      - alert: HighErrorRate
+        expr: sum(rate(mrb_http_requests_total{status=~"5.."}[2m])) / clamp_min(sum(rate(mrb_http_requests_total[2m])), 0.01) > 0.05
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: 'HTTP 5xx above 5 percent'}
+      - alert: SlowRequests
+        expr: histogram_quantile(0.95, sum by (le) (rate(mrb_http_duration_seconds_bucket[2m]))) > 1
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: 'HTTP p95 above one second'}

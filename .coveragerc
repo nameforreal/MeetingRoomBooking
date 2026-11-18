@@ -1,0 +1,13 @@
+[run]
+branch = True
+source = rooms,management,dashboard,config
+omit =
+    */test*.py
+    */migrations/*
+    */__init__.py
+    config/asgi.py
+    config/wsgi.py
+
+[report]
+show_missing = True
+precision = 2

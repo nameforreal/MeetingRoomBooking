@@ -22,3 +22,7 @@ data_backup.json
 data_backup.json
 data_backup_utf8.json
 /media/
+/staticfiles/
+/.ruff_cache/
+/backups/
+/docker/tls/

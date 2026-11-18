@@ -1,0 +1,13 @@
+{
+  "target_rps": 200,
+  "duration_seconds": 15,
+  "elapsed_seconds": 15.001,
+  "requests": 3000,
+  "dropped": 0,
+  "http_errors": 0,
+  "achieved_rps": 199.99,
+  "p50_ms": 4.79,
+  "p95_ms": 27.28,
+  "p99_ms": 29.56,
+  "scope": "80% public room API, 20% HTML catalog; read-only, no booking writes"
+}

@@ -1,97 +1,60 @@
 # MeetingRoomBooking
 
-Веб-приложение для бронирования переговорных комнат, разработанное на Python и Django.
+Система бронирования переговорных: Django 6.0.10, Python 3.14.2, PostgreSQL 17.
+Поддерживает Permissions/Groups, VIP-согласование, revision, идемпотентное создание,
+защищённую историю, аудит и CSV-экспорт по комнате и датам.
 
-## Возможности
+## Установка
 
-- Регистрация и авторизация пользователей.
-- Просмотр доступных переговорных комнат.
-- Создание и отмена бронирований.
-- Проверка пересечений бронирований.
-- Ограничение продолжительности бронирования.
-- Подтверждение VIP-бронирований.
-- Управление бронированиями через Django Admin.
-- REST API для получения информации о комнатах и работы с бронированиями.
-- Автоматическое тестирование бизнес-логики и API.
+Полная инструкция для Windows, Docker, HTTPS, CI и backup/restore:
+[INFRASTRUCTURE.md](INFRASTRUCTURE.md).
 
-## Технологии
+Для **нового изолированного стенда** (Docker Desktop, Linux containers, Compose 2.24.4+):
 
-- Python
-- Django 6.0.10
-- Django REST Framework
-- PostgreSQL 17
-- Docker и Docker Compose
-- HTML, CSS
-- Git
+```powershell
+$dc = @('--env-file', 'docker/test.env', '-p', 'mrb-infra-test', '-f', 'compose.yaml', '-f', 'compose.test.yaml')
+docker compose @dc build app
+docker compose @dc up -d --wait db redis
+docker compose @dc run --rm --no-deps app python manage.py migrate --noinput
+docker compose @dc up -d --wait
+```
 
-## Установка и запуск
+Сайт: http://127.0.0.1:18063/. Порт должен быть свободен. Публичные значения
+`docker/test.env` разрешены только для тестов. Не используйте имя рабочего проекта.
 
-### 1. Создание виртуального окружения
+## Windows venv и проверки
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
+python manage.py test --settings=config.test_settings --noinput
+python manage.py check --settings=config.test_settings
+python -m ruff check .
+python scripts/check_format.py
+git diff --check
 ```
 
-### 2. Установка зависимостей
+Запуск полного PostgreSQL-набора в изолированном контейнере:
 
 ```powershell
-python -m pip install -r requirements.txt
+docker compose @dc exec -T app python -m coverage run manage.py test --settings=config.test_container_settings --noinput
+docker compose @dc exec -T app python scripts/check_coverage.py
+python scripts/infra_probe.py
+python scripts/verify_infrastructure.py
+python scripts/e2e_http.py
 ```
 
-### 3. Настройка переменных окружения
+Для Windows runserver и собственного окружения следуйте INFRASTRUCTURE.md.
+SQLite не считается доказательством PostgreSQL-блокировок и триггеров.
+CI проверяет оба набора и собирает образ; публикация/автодеплой не включены.
 
-Скопируйте `.env.example` в `.env` и замените значения-заглушки на собственные.
+## Документация
 
-Для запуска с PostgreSQL необходимо указать `DB_ENGINE=postgres`, `POSTGRES_PASSWORD` и `DJANGO_SECRET_KEY`.
-
-### 4. Запуск PostgreSQL
-
-```powershell
-docker compose up -d db
-```
-
-### 5. Применение миграций
-
-```powershell
-python manage.py migrate
-```
-
-### 6. Запуск приложения
-
-```powershell
-python manage.py runserver 8001
-```
-
-После запуска приложение доступно по адресу:
-
-http://127.0.0.1:8001/
-
-## REST API
-
-- `GET /api/rooms/` — список переговорных комнат.
-- `GET /api/bookings/` — список бронирований пользователя.
-- `POST /api/bookings/` — создание бронирования.
-
-## Тестирование
-
-Запуск автоматических тестов:
-
-```powershell
-python manage.py test rooms -v 2
-```
-
-На текущем этапе реализовано 22 автоматических теста.
-
-## База данных
-
-Приложение поддерживает SQLite для локальной разработки и PostgreSQL для работы с контейнером Docker.
-
-Данные подключения настраиваются через переменные окружения.
-
-## Автор
-
-Учебный проект по разработке веб-приложений.
-
-## Обновление личного кабинета
-См. `ACCOUNT_UPDATE.md` для списка изменений и пошаговой установки. База данных и `.env` в архив не включены — сохраните локальные файлы.
+- [BUSINESS_RULES.md](BUSINESS_RULES.md), [API_GUIDE.md](API_GUIDE.md) — контракты.
+- [VIP_APPROVAL.md](VIP_APPROVAL.md), [ROLES.md](ROLES.md) — согласование и права.
+- [CONCURRENCY.md](CONCURRENCY.md), [AUDIT_HISTORY.md](AUDIT_HISTORY.md) — история и блокировки.
+- [MIGRATION_SAFETY.md](MIGRATION_SAFETY.md), [CSV_EXPORT.md](CSV_EXPORT.md) — безопасность.
+- [INFRASTRUCTURE.md](INFRASTRUCTURE.md) — актуальная установка вместо исторических INSTALL/UPDATE.
+- [DELIVERY.md](DELIVERY.md) — матрица требований, мониторинг, пилот, ресурсы и реестр ограничений.
+- `/api/schema/` — OpenAPI JSON; `/api/docs/` — Swagger UI (интерфейс требует CDN).

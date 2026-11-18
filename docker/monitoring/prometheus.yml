@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+rule_files: [/etc/prometheus/alerts.yml]
+scrape_configs:
+  - job_name: meetingroom
+    metrics_path: /metrics/
+    authorization:
+      credentials: isolated-metrics-only
+    static_configs:
+      - targets: ['app:8000']
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']

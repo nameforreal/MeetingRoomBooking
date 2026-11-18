@@ -1,0 +1,5 @@
+{
+  "scrape": "up",
+  "RedisUnavailable_received_by_alertmanager": true,
+  "external_notifications": "not configured"
+}

@@ -28,9 +28,10 @@ def overview(request):
 
 @staff_permission_required("rooms.view_booking")
 def bookings(request):
- q,s,term=filtered_bookings(request.GET)
+ try: q,s,term=filtered_bookings(request.GET)
+ except ValidationError as exc: return HttpResponse("; ".join(exc.messages), status=400, content_type="text/plain; charset=utf-8")
  q=q.order_by('-start_time')
- return render(request,'management/bookings.html',{'items':q[:300],'count':q.count(),'status_filter':s,'query':term})
+ return render(request,'management/bookings.html',{'items':q[:300],'count':q.count(),'status_filter':s,'query':term,'filter_rooms':Room.objects.all(),'room_filter':request.GET.get('room',''),'date_from':request.GET.get('date_from',''),'date_to':request.GET.get('date_to','')})
 
 @staff_permission_required("rooms.change_booking")
 @require_POST
@@ -62,7 +63,8 @@ def users(request):
 @staff_permission_required("rooms.export_booking")
 @require_GET
 def export_csv(request):
- q,_,_=filtered_bookings(request.GET)
+ try: q,_,_=filtered_bookings(request.GET)
+ except ValidationError as exc: return HttpResponse("; ".join(exc.messages), status=400, content_type="text/plain; charset=utf-8")
  return export_bookings(q)
 
 

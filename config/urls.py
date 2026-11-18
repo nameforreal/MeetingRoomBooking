@@ -1,7 +1,14 @@
 from django.contrib import admin
 from django.urls import path, include
+from .health import health
+from .metrics import metrics
+from .openapi import schema, docs
 
 urlpatterns = [
+    path("health/", health, name="health"),
+    path("metrics/", metrics, name="metrics"),
+    path("api/schema/", schema, name="openapi-schema"),
+    path("api/docs/", docs, name="openapi-docs"),
     path('', include('dashboard.urls')),
     path("admin/", admin.site.urls),
     path("management/", include("management.urls")),

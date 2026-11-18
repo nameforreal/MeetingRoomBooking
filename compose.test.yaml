@@ -1,0 +1,12 @@
+# Apply with --env-file docker/test.env -p mrb-infra-test.
+# No host PostgreSQL port: container tests use db:5432.
+services:
+  app:
+    build:
+      context: .
+      target: test
+    image: meetingroom-app:test
+    environment:
+      DJANGO_ENV: development
+  proxy:
+    ports: !override ['127.0.0.1:18063:8080']

@@ -1,0 +1,7 @@
+# Opt-in HTTP development only. Never combine with production TLS overrides.
+services:
+  app:
+    environment:
+      DJANGO_ENV: development
+  db:
+    ports: ['127.0.0.1:${LOCAL_POSTGRES_PORT:-55440}:5432']

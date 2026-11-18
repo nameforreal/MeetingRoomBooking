@@ -19,7 +19,7 @@ from django.core.exceptions import ImproperlyConfigured
 
 env_file = BASE_DIR / ".env"
 
-if env_file.exists():
+if os.environ.get("DJANGO_READ_DOT_ENV", "true").lower() == "true" and env_file.exists():
     for line in env_file.read_text(encoding="utf-8-sig").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -41,7 +41,7 @@ if not SECRET_KEY:
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() == "true"
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
 
 
 # Application definition
@@ -60,6 +60,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'config.metrics.MetricsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -104,11 +105,14 @@ if os.environ.get("DB_ENGINE", "sqlite") == "postgres":
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
-            "NAME": "meetingroom",
-            "USER": "meetingroom",
+            "NAME": os.environ.get("POSTGRES_DB", "meetingroom"),
+            "USER": os.environ.get("POSTGRES_USER", "meetingroom"),
             "PASSWORD": db_password,
-            "HOST": "127.0.0.1",
-            "PORT": "5432",
+            "HOST": os.environ.get("POSTGRES_HOST", "127.0.0.1"),
+            "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+            "CONN_MAX_AGE": 60,
+            "CONN_HEALTH_CHECKS": True,
+            "OPTIONS": {"connect_timeout": 5},
         }
     }
 else:
@@ -168,4 +172,38 @@ REST_FRAMEWORK = {
     ],
 }
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = Path(os.environ.get("DJANGO_MEDIA_ROOT", BASE_DIR / "media"))
+STATIC_ROOT = Path(os.environ.get("DJANGO_STATIC_ROOT", BASE_DIR / "staticfiles"))
+
+# Optional, disposable cache. Sessions, permissions and booking state stay in SQL.
+REDIS_URL = os.environ.get("REDIS_URL", "")
+METRICS_TOKEN = os.environ.get("METRICS_TOKEN", "")
+if REDIS_URL:
+    CACHES = {"default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": REDIS_URL,
+        "KEY_PREFIX": "meetingroom",
+        "TIMEOUT": 60,
+        "OPTIONS": {"socket_connect_timeout": 1, "socket_timeout": 1},
+    }}
+
+CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if origin.strip()]
+PRODUCTION = os.environ.get("DJANGO_ENV", "development") == "production"
+SESSION_COOKIE_SECURE = os.environ.get("DJANGO_SESSION_COOKIE_SECURE", str(PRODUCTION)).lower() == "true"
+CSRF_COOKIE_SECURE = os.environ.get("DJANGO_CSRF_COOKIE_SECURE", str(PRODUCTION)).lower() == "true"
+SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SECURE_SSL_REDIRECT", str(PRODUCTION)).lower() == "true"
+SECURE_REDIRECT_EXEMPT = [r"^health/$"]
+SECURE_HSTS_SECONDS = 31536000 if PRODUCTION else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = PRODUCTION
+SECURE_HSTS_PRELOAD = PRODUCTION
+# Enable only behind a trusted proxy that replaces this header.
+if os.environ.get("DJANGO_TRUST_PROXY", "false").lower() == "true":
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+if PRODUCTION:
+    if DEBUG or len(SECRET_KEY) < 50 or len(set(SECRET_KEY)) < 5 or SECRET_KEY.startswith("django-insecure-"):
+        raise ImproperlyConfigured("Production requires DEBUG=False and a strong DJANGO_SECRET_KEY")
+    if not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS or os.environ.get("DB_ENGINE") != "postgres":
+        raise ImproperlyConfigured("Production requires explicit hosts and PostgreSQL")
+    if not all((SESSION_COOKIE_SECURE, CSRF_COOKIE_SECURE, SECURE_SSL_REDIRECT)):
+        raise ImproperlyConfigured("Production requires HTTPS redirect and secure cookies")
