@@ -4,6 +4,18 @@ import subprocess
 import sys
 
 FILES = [
+    "config/neon_identity.py",
+    "config/test_neon_guards.py",
+    "rooms/bootstrap_catalog.py",
+    "rooms/management/commands/seed_hosting_rooms.py",
+    "scripts/check_neon_guards.py",
+    "config/render_config.py",
+    "config/settings_render.py",
+    "config/render_media.py",
+    "config/test_render.py",
+    "docker/render_entrypoint.py",
+    "docker/render_gunicorn.py",
+    "rooms/management/commands/neon_bootstrap.py",
     "config/health.py",
     "config/test_container_settings.py",
     "config/test_infrastructure.py",

@@ -25,7 +25,7 @@ COPY config ./config
 COPY rooms ./rooms
 COPY management ./management
 COPY dashboard ./dashboard
-COPY docker/entrypoint.py docker/healthcheck.py docker/gunicorn.conf.py ./docker/
+COPY docker/entrypoint.py docker/healthcheck.py docker/gunicorn.conf.py docker/render_entrypoint.py docker/render_gunicorn.py ./docker/
 USER 10001:10001
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=6 CMD ["python", "docker/healthcheck.py"]

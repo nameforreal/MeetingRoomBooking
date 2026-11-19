@@ -17,6 +17,8 @@
 !docker/entrypoint.py
 !docker/healthcheck.py
 !docker/gunicorn.conf.py
+!docker/render_entrypoint.py
+!docker/render_gunicorn.py
 **/__pycache__/
 **/*.pyc
 **/.env

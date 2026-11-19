@@ -1,0 +1,21 @@
+# Review and create manually. No database, disk or paid service is provisioned.
+services:
+  - type: web
+    name: meetingroombooking-demo
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile.render
+    autoDeployTrigger: 'off'
+    healthCheckPath: /health/
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: NEON_HOST
+        sync: false
+      - key: NEON_DATABASE
+        value: neondb
+      - key: NEON_USER
+        sync: false
+      - key: NEON_PASSWORD
+        sync: false

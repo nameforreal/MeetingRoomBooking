@@ -22,6 +22,9 @@ docker compose @dc up -d --wait
 Сайт: http://127.0.0.1:18063/. Порт должен быть свободен. Публичные значения
 `docker/test.env` разрешены только для тестов. Не используйте имя рабочего проекта.
 
+Облачный профиль Render Free + Neon описан в [HOSTING_RENDER.md](HOSTING_RENDER.md).
+Он использует отдельный Dockerfile и не переключает локальный Compose на облако.
+
 ## Windows venv и проверки
 
 ```powershell
