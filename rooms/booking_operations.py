@@ -101,6 +101,9 @@ def save_room(room, *, force_insert=False, force_update=False, using=None, updat
     alias = using or room._state.db or "default"
     if update_fields is not None and not update_fields:
         return
+    if update_fields is None or "capacity" in update_fields:
+        from .room_rules import validate_capacity
+        validate_capacity(room.capacity)
     with transaction.atomic(using=alias):
         current = None
         if not room._state.adding:

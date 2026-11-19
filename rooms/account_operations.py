@@ -11,6 +11,15 @@ class ProfileUnavailable(PermissionDenied):
     """The authenticated account disappeared or was deactivated before saving."""
 
 
+def validate_account_policy(current, *, actor, values):
+    """Shared predictable form checks; repeated against the locked row on save."""
+    if actor is not None and actor.pk == current.pk:
+        if not values.get("is_active", current.is_active) or not values.get("is_staff", current.is_staff):
+            raise ValidationError("Нельзя отключить собственный административный доступ.")
+    if current.is_superuser and not values.get("is_staff", current.is_staff):
+        raise ValidationError("Нельзя снять права сотрудника с суперпользователя.")
+
+
 @audit.operation_context
 def save_profile(*, actor, first_name, last_name, email):
     """Save only self-service fields, using the same row lock as deactivation."""
@@ -51,14 +60,12 @@ def save_account(user, *, actor=None, fields=None):
         if actor is not None and not can_edit_account(actor, current):
             raise PermissionDenied
         selected = set(fields) if fields is not None else {f.name for f in user._meta.concrete_fields if not f.primary_key}
-        if actor is not None and not actor.is_superuser and selected.intersection({"is_staff", "is_superuser"}):
+        if actor is not None and not actor.is_superuser and selected.intersection({"is_staff", "is_superuser", "password"}):
             raise PermissionDenied
         # Never persist a stale flag from a form which did not change it.
-        desired_active = user.is_active if "is_active" in selected else current.is_active
-        if actor is not None and actor.pk == user.pk and not desired_active:
-            raise ValidationError("Нельзя отключить собственный административный доступ.")
-        if current.is_superuser and "is_staff" in selected and not user.is_staff:
-            raise ValidationError("Нельзя снять права сотрудника с суперпользователя.")
+        validate_account_policy(current, actor=actor, values={
+            name: getattr(user, name) for name in selected.intersection({"is_active", "is_staff"})
+        })
         before = {"is_active": current.is_active}
         for name in selected:
             if name not in {f.name for f in user._meta.concrete_fields if not f.primary_key}:

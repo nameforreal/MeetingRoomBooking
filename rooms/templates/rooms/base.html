@@ -40,9 +40,17 @@
 
                 {% if user.is_authenticated %}
                     {% if user.is_staff %}
+                        {% if perms.rooms.view_booking %}
                         <a href="{% url 'management:overview' %}">
                             Управление
                         </a>
+                        {% elif perms.rooms.view_room %}
+                        <a href="{% url 'management:rooms' %}">Управление</a>
+                        {% elif perms.auth.view_user %}
+                        <a href="{% url 'management:users' %}">Управление</a>
+                        {% elif perms.rooms.add_room %}
+                        <a href="{% url 'management:room_add' %}">Управление</a>
+                        {% endif %}
                     {% endif %}
 
                     <a href="{% url 'dashboard' %}">

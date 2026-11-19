@@ -8,12 +8,6 @@ class RoomForm(forms.ModelForm):
         fields = ["name", "description", "capacity", "is_vip", "is_active", "photo"]
         widgets = {"description": forms.Textarea(attrs={"rows": 4})}
 
-    def clean_capacity(self):
-        value = self.cleaned_data["capacity"]
-        if not 1 <= value <= 200:
-            raise forms.ValidationError("Вместимость должна быть от 1 до 200 человек.")
-        return value
-
     def clean_photo(self):
         photo = self.cleaned_data.get("photo")
         if photo and hasattr(photo, "size") and photo.size > 5 * 1024 * 1024:

@@ -25,7 +25,7 @@ DATE = {"type": "string", "format": "date-time"}
 ROOM_FIELDS = {
     "name": {"type": "string"},
     "description": {"type": "string"},
-    "capacity": {"type": "integer"},
+    "capacity": {"type": "integer", "minimum": 1, "maximum": 200},
     "is_vip": {"type": "boolean"},
     "is_active": {"type": "boolean"},
 }
@@ -134,7 +134,10 @@ PATHS = {
         "get": {
             "summary": "Own bookings (array, currently unpaginated)",
             "parameters": [
-                query("room", "integer"),
+                query("room", "integer", minimum=1, maximum=9223372036854775807)
+                | {
+                    "description": "1–19 ASCII digits; leading zeros allowed. Empty, malformed or out-of-range values return 400. Unknown valid ID returns an empty array."
+                },
                 query("status", enum=["pending", "confirmed", "cancelled"]),
                 query("date_from", format="date"),
                 query("date_to", format="date"),

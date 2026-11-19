@@ -7,6 +7,14 @@ from uuid import uuid4
 class Room(models.Model):
     objects = RoomQuerySet.as_manager()
 
+    def clean(self):
+        from .room_rules import validate_capacity
+        super().clean()
+        try:
+            validate_capacity(self.capacity)
+        except ValidationError as error:
+            raise ValidationError({"capacity": error.messages}) from error
+
     def delete(self, *args, **kwargs):
         raise ProtectedError("Use the controlled deletion procedure for rooms without history.", [self])
 
@@ -239,7 +247,10 @@ class Booking(models.Model):
             return previous
         if self.status == "cancelled":
             return previous
-        if changed and self.room_id and self.room.is_vip:
+        leaving_approved_vip = (
+            previous.status == "confirmed" and previous.room_id != self.room_id and previous.room.is_vip
+        )
+        if changed and self.room_id and (self.room.is_vip or leaving_approved_vip):
             self.status = "pending"
         elif self.status != previous.status and (previous.status, self.status) != ("pending", "confirmed"):
             raise ValidationError("Недопустимое изменение статуса бронирования.")

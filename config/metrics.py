@@ -74,8 +74,13 @@ class Dependencies:
 @require_GET
 def metrics(request):
     token = getattr(settings, "METRICS_TOKEN", "")
-    if not token or not hmac.compare_digest(
-        request.headers.get("Authorization", ""), "Bearer " + token
+    authorization = request.headers.get("Authorization", "")
+    if (
+        not token
+        or not authorization.isascii()
+        or not token.isascii()
+        or len(authorization) != len(token) + len("Bearer ")
+        or not hmac.compare_digest(authorization, "Bearer " + token)
     ):
         return HttpResponse(status=404)
     registry = CollectorRegistry()

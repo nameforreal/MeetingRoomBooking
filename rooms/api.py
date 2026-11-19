@@ -13,6 +13,7 @@ from .permissions import RoomPermissions, staff_has_perm
 from . import booking_rules as rules
 from .booking_idempotency import IdempotencyError, validate_key
 from .audit import APIContextMixin
+from .room_rules import validate_capacity
 
 
 def query_date(params, key, *, booking=False):
@@ -41,6 +42,15 @@ class SiteDateTimeField(serializers.DateTimeField):
 
 
 class RoomSerializer(serializers.ModelSerializer):
+    capacity = serializers.IntegerField(required=False)
+
+    def validate_capacity(self, value):
+        try:
+            validate_capacity(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages) from exc
+        return value
+
     def update(self, instance, validated_data):
         try:
             return super().update(instance, validated_data)
@@ -207,7 +217,10 @@ class BookingViewSet(APIContextMixin, viewsets.ModelViewSet):
         if status_filter in {choice[0] for choice in Booking.STATUS_CHOICES}:
             queryset = queryset.filter(status=status_filter)
         room_id = params.get("room")
-        if room_id and room_id.isdigit():
+        if room_id is not None:
+            if (re.fullmatch(r"[0-9]{1,19}", room_id) is None
+                    or not 1 <= int(room_id) <= 9223372036854775807):
+                raise serializers.ValidationError({"room": ["Передайте целый ID комнаты от 1 до 9223372036854775807."]})
             queryset = queryset.filter(room_id=int(room_id))
         date_from = query_date(params, "date_from")
         date_to = query_date(params, "date_to")

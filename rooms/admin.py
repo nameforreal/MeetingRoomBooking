@@ -14,6 +14,8 @@ from django import forms
 from .permissions import staff_has_perm, can_edit_account
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin
+from django.contrib.auth.forms import AdminPasswordChangeForm
+from django.db import router, transaction
 from django.core.exceptions import PermissionDenied
 
 
@@ -222,8 +224,44 @@ class BookingAdmin(HistoryAdminMixin, admin.ModelAdmin):
 admin.site.unregister(get_user_model())
 
 
+class ControlledAdminPasswordChangeForm(AdminPasswordChangeForm):
+    def save(self, commit=True):
+        # Keep Django's hashing/unusable-password logic, never its full User.save().
+        user = super().save(commit=False)
+        if commit:
+            _, actor, _ = audit.identity()
+            if actor is None:
+                raise PermissionDenied
+            self.user = account_operations.save_account(user, actor=actor, fields=["password"])
+        return self.user
+
+
 @admin.register(get_user_model())
 class RestrictedUserAdmin(HistoryAdminMixin, UserAdmin):
+    change_password_form = ControlledAdminPasswordChangeForm
+
+    def get_form(self, request, obj=None, **kwargs):
+        base = super().get_form(request, obj, **kwargs)
+
+        class AccountForm(base):
+            def clean(self):
+                data = super().clean()
+                if not self.instance._state.adding:
+                    account_operations.validate_account_policy(
+                        self.instance, actor=request.user,
+                        values={key: data[key] for key in ("is_active", "is_staff") if key in data},
+                    )
+                return data
+
+        return AccountForm
+
+    def changeform_view(self, request, *args, **kwargs):
+        try:
+            return super().changeform_view(request, *args, **kwargs)
+        except ValidationError as error:
+            self.message_user(request, "; ".join(error.messages), messages.ERROR)
+            return HttpResponseRedirect(request.path)
+
     def has_add_permission(self, request):
         return request.user.is_superuser and super().has_add_permission(request)
 
@@ -248,7 +286,14 @@ class RestrictedUserAdmin(HistoryAdminMixin, UserAdmin):
     def user_change_password(self, request, id, form_url=""):
         if not request.user.is_superuser:
             raise PermissionDenied
-        return super().user_change_password(request, id, form_url)
+        try:
+            with audit.context(source="django_admin", actor=request.user):
+                # Include the standard LogEntry in the password transaction.
+                with transaction.atomic(using=router.db_for_write(self.model)):
+                    return super().user_change_password(request, id, form_url)
+        except ValidationError as error:
+            self.message_user(request, "; ".join(error.messages), messages.ERROR)
+            return HttpResponseRedirect(request.path)
 
 
 @admin.register(AuditEvent)
