@@ -10,6 +10,8 @@
 - GitHub Actions run №21 для этого коммита завершился успешно: jobs `tests` и `container`.
 - Публичный сервис Render развёрнут вручную; доступ к сайту, вход и оба визуальных исправления подтверждены владельцем.
 - Автоматический deploy из GitHub в Render не настроен: Auto Deploy выключен. Полная ручная приёмка всех сценариев на публичном сайте ещё не завершена.
+- Локальный мониторинг: Prometheus, Alertmanager и provisioned Grafana dashboard; метрики PostgreSQL connections.
+- Изолированный read-only нагрузочный профиль k6 до 1000 виртуальных пользователей описан в [INFRASTRUCTURE.md](INFRASTRUCTURE.md); реальные результаты появляются только после локального запуска.
 - Подробная матрица требований, результаты испытаний и ограничения — в [DELIVERY.md](DELIVERY.md).
 - UML-схемы — в [ARCHITECTURE.md](ARCHITECTURE.md); реестр дефектов и ручной приёмки — в [DEFECT_REGISTER.md](DEFECT_REGISTER.md).
 

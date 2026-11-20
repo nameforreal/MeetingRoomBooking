@@ -16,7 +16,8 @@
 358 тестов. Во время инфраструктурной работы: Docker, Gunicorn, Nginx, Redis,
 Compose-профили, healthcheck, CI workflow, настройки окружения, 15 новых тестов.
 Для сдачи добавлены явные CSV room/date-фильтры, OpenAPI/Swagger, метрики,
-Prometheus/Alertmanager, ещё 7 тестов, HTTP E2E, покрытие и нагрузочный сценарий.
+Prometheus/Alertmanager, Grafana dashboard, PostgreSQL connection metrics, k6-профиль
+на 1000 виртуальных пользователей, ещё 7 тестов, HTTP E2E и покрытие.
 В отдельном исправлении каталога 20.11 добавлены ещё 8 регрессионных тестов
 порядка, поиска и фильтров. Бизнес-операции, permissions, группы, миграции и
 прежние тесты не переписывались.
@@ -37,7 +38,7 @@ Prometheus/Alertmanager, ещё 7 тестов, HTTP E2E, покрытие и н
 | Docker / HTTP | Сборка контейнера успешна; в CI прошли запуск изолированных зависимостей, миграция новой CI-базы, readiness, восстановление после отказа зависимостей, HTTP E2E и PostgreSQL-набор внутри образа |
 | Render | Публичный сайт вручную проверен владельцем 20.11.2026: подтверждены 11/11 сценариев приёмки из `DEFECT_REGISTER.md`, включая авторизацию, каталог, расписание, создание/отмену и конфликты бронирований, VIP, CSV, права, API и адаптивность. По сообщению владельца, ошибок не обнаружено |
 | Backup/restore | В отдельной тестовой БД `stage563_restore` восстановлены 3 брони, 6 событий и 3 ключа; trigger и exclusion constraint присутствуют. Это тестовое восстановление в новую БД, не проверка аварийного восстановления production |
-| Мониторинг | Prometheus scrape — up; тестовое предупреждение `RedisUnavailable` получено Alertmanager; внешние уведомления оператору не настроены |
+| Мониторинг | Prometheus, Alertmanager и Grafana dashboard provisioned; PostgreSQL connection metrics добавлены; проверка target/metric/dashboard/alert включена в CI. Внешние уведомления оператору не настроены |
 
 Отчёты измерений: `reports/coverage-summary.json`, `reports/load-100.json`,
 `reports/load-200.json`, `reports/monitoring.json`. Покрытие измерено полным
@@ -78,15 +79,15 @@ alert, но не доставку внешнему оператору. Резу�
 | 15 | Статический анализ | ГОТОВО | Ruff correctness gate, формат новых инфраструктурных файлов |
 | 16 | Нагрузка 100–200 RPS | ГОТОВО | Короткие read-only прогоны; не эквивалент длительной смешанной нагрузке |
 | 17 | HTTP/errors/latency/DB metrics | ГОТОВО | Counter, histogram, SQL readiness/latency, Redis readiness |
-| 18 | Мониторинг и алерты | ЧАСТИЧНО | Prometheus/Alertmanager и локальный alert проверены; Grafana dashboard, метрика использования DB connections и внешняя доставка не настроены. Очереди фоновых задач в проекте нет |
+| 18 | Мониторинг и алерты | ГОТОВО | Prometheus/Alertmanager/Grafana, RPS, HTTP errors, p95/p99, PostgreSQL connections и dependency health; CI проверяет dashboard и alert. Внешняя email/webhook-доставка не настроена. Очереди фоновых задач в проекте нет |
 | 19 | OpenAPI/Swagger | ГОТОВО | /api/schema/ и /api/docs/; Swagger assets требуют CDN |
 | 20 | Архитектурная схема | ГОТОВО | Ниже |
-| 21 | Ресурсы: 1000 пользователей/100 RPS | ЧАСТИЧНО | Ресурсная оценка и расчёт ниже приведены; 1000 одновременных сессий и смешанная нагрузка 100 RPS испытанием не подтверждены |
+| 21 | Ресурсы: 1000 пользователей/100 RPS | ЧАСТИЧНО | Добавлен воспроизводимый k6-профиль до 1000 виртуальных пользователей и около 100 RPS; фактический прогон на изолированном стенде ещё должен выполнить владелец |
 | 22 | Установка/мониторинг/backup | ГОТОВО | INFRASTRUCTURE.md, этот документ, MIGRATION_SAFETY.md; тестовое восстановление выполнено |
 | 23 | План пилота | ГОТОВО | План ниже; реальный пилот ещё не проводился |
 | 24 | Дефекты и финальный отчёт | ГОТОВО | Реестр `DEFECT_REGISTER.md`; 11/11 ручных сценариев на публичном Render подтверждены владельцем 20.11.2026, ошибок не обнаружено |
 
-Итог: **20 ГОТОВО, 4 ЧАСТИЧНО**. Отсутствие полностью пустых пунктов не означает
+Итог после реализации Grafana и метрик: **21 ГОТОВО, 3 ЧАСТИЧНО**. Отсутствие полностью пустых пунктов не означает
 полную production-готовность: частичные пункты и ограничения измерений существенны.
 
 ## Архитектура
@@ -161,7 +162,7 @@ python scripts/load_test.py --rps 200 --seconds 15
 
 ## Расчёт ресурсов
 
-1000 вошедших пользователей не равны 1000 одновременно выполняющихся запросов.
+1000 вошедших пользователей не равны 1000 одновременно выполняющихся запросов. k6-профиль проверяет именно 1000 виртуальных сессий с паузой 8–12 секунд между GET-запросами.
 При 100 RPS средний интервал действий составляет 1000/100 = **10 секунд**.
 Для расчётного среднего server response 0,2 с закон Литтла даёт L=100×0,2=**20**
 одновременных запросов. Это допущение для запаса, не измеренное среднее.
@@ -185,12 +186,12 @@ app-инстансов возможно только после пилота и 
 
 ```powershell
 $mon = @('--env-file', 'docker/test.env', '-p', 'mrb-infra-test', '-f', 'compose.yaml', '-f', 'compose.test.yaml', '-f', 'compose.monitoring.yaml')
-docker compose @mon up -d --wait
-python scripts/verify_monitoring.py
+docker compose @mon up -d --wait prometheus alertmanager grafana
+python scripts/verify_monitoring.py --project mrb-infra-test
 docker compose @mon ps
 ```
 
-- Prometheus: http://127.0.0.1:18090; Alertmanager: http://127.0.0.1:18093.
+- Grafana: http://127.0.0.1:18091 (admin / isolated-grafana-only — только локальный demo-пароль); Prometheus: http://127.0.0.1:18090; Alertmanager: http://127.0.0.1:18093.
 - Scrape app:8000/metrics/ требует bearer token; внешний Nginx возвращает 404.
 - Labels не содержат username, ID объекта, query string, токены или ключи создания.
 - Gunicorn использует multiprocess aggregation; новый каталог счётчиков создаётся
@@ -198,7 +199,7 @@ docker compose @mon ps
 - Ошибки: `sum(rate(mrb_http_requests_total{status=~"5.."}[2m]))`.
 - RPS: `sum(rate(mrb_http_requests_total[2m]))`.
 - p95: `histogram_quantile(0.95,sum by(le)(rate(mrb_http_duration_seconds_bucket[2m])))`.
-- SQL: `mrb_database_up`, `mrb_database_probe_seconds`; cache: `mrb_cache_up`.
+- SQL: `mrb_database_up`, `mrb_database_probe_seconds`, `mrb_database_connections`, `mrb_database_active_connections`, `mrb_database_max_connections`; cache: `mrb_cache_up`.
 
 Алерты: ApplicationDown 30с; DatabaseUnavailable/RedisUnavailable 15с;
 HTTP 5xx >5% и p95 >1с в течение минуты. Scrape/evaluation каждые 5с.
@@ -210,7 +211,7 @@ Redis можно восстановить без восстановления к
 публичный scrape token на отдельный секрет, хранить bearer credentials в закрытом
 внешнем конфигурационном файле (не Git) и выбрать внешний email/webhook receiver.
 Значения реальных credentials не запрашивались. До этого внешняя доставка **не работает**.
-Prometheus хранит 7 дней; Grafana и сложные exporter-стэки не добавлялись.
+Prometheus хранит 7 дней; Grafana dashboard provisioned из Git. Отдельный postgres_exporter не требуется: счётчики DB connections снимаются Django collector через pg_stat_activity.
 
 ## SLA и фактически собранные метрики
 
@@ -221,11 +222,11 @@ Prometheus хранит 7 дней; Grafana и сложные exporter-стэк�
 | Availability ≥ 99,9% | Непрерывное наблюдение за длительный период и расчёт uptime не выполнялись | Не подтверждено |
 | HTTP requests / errors / latency | Счётчик ответов и histogram задержек с ограниченными labels | Реализовано |
 | PostgreSQL / Redis readiness | SQL probe, cache readiness и alerts | Реализовано |
-| DB connection pool / connections | Отдельная метрика размера пула/занятых соединений пока отсутствует | Не реализовано |
+| PostgreSQL connections | Текущие/active connections БД приложения и max_connections сервера через pg_stat_activity | Реализовано; не является метрикой Django connection pool |
 | Queue depth | Фоновой очереди задач в проекте нет; пользовательские операции выполняются синхронно | Не применимо |
-| Dashboard | Prometheus UI доступен локально; отдельный Grafana dashboard не развёрнут | Частично |
+| Dashboard | Grafana dashboard с HTTP RPS/errors, p95/p99, PostgreSQL connections и health зависимостей | Реализовано в локальном профиле |
 
-SLA 99,9% не следует заявлять как достигнутый: доступность за длительный период не измерялась. Короткие нагрузочные прогоны подтверждают только read-only смесь GET-запросов на локальном стенде, не Render, не запись бронирований и не 1000 одновременных пользователей.
+SLA 99,9% не следует заявлять как достигнутый: доступность за длительный период не измерялась. Существующие короткие прогоны 100/200 RPS остаются read-only. Новый k6-профиль моделирует до 1000 виртуальных пользователей с read-only GET; фактические achieved RPS, p95/p99 и error rate появятся только после локального запуска владельцем. Ни один из этих тестов не подтверждает конкурентные записи бронирований или производительность Render.
 
 
 ## Сценарий демонстрации (10–15 минут)
@@ -276,7 +277,7 @@ backup восстанавливается в новую БД, оператор �
 | D02 | P2 | Непрерывный CD не настроен; Render развёртывается вручную, Auto Deploy выключен | Сохранить ручное развёртывание для сдачи; автоматизацию добавлять только при отдельной необходимости |
 | D03 | P2 | Роль реализована через Django Group, отдельной модели Role нет | Сверить терминологию с оригинальным заданием преподавателя; не дублировать Groups без требования |
 | D04 | P2 | Внешние уведомления не настроены | Выбрать receiver и проверить доставку оператору, если это требуется заданием |
-| D05 | P2 | Нагрузка короткая/read-only; 1000 пользователей и конкурентные записи не испытаны | Длительный смешанный тест на пилотной площадке |
+| D05 | P2 | k6-профиль до 1000 VU добавлен, но фактический прогон на машине владельца ещё не выполнен; профиль read-only | Запустить k6 на изолированном Docker-стенде, сохранить reports/k6-summary.json и фактические CPU/RAM/RPS/latency; конкурентные записи тестировать отдельно |
 | D06 | P2 | API-списки без пагинации, собственный admin-список ограничен 300 строками | Не скрывать ограничение; отдельная задача при росте объёма данных |
 | D07 | P2 | Swagger UI требует CDN; browser/JS E2E отсутствует | Проверить в браузере на машине преподавателя; OpenAPI JSON доступен отдельно |
 | D08 | P2 | Bootstrap DB-role владеет БД, demo monitoring не production-hardening | Отдельные runtime/migration роли и защищённый monitoring перед production |
@@ -284,7 +285,7 @@ backup восстанавливается в новую БД, оператор �
 | D10 | P2 | Полноценный пользовательский пилот с 3–5 участниками не проводился | Провести короткую приёмку по плану выше, если есть время и согласованная площадка |
 | D11 | P2 | Safari, Firefox и физические мобильные устройства отдельно не проверялись | Выполнить ручную кросс-браузерную проверку, если они входят в критерии приёмки |
 | D12 | P2 | Рецензия документации наставником/одногруппником не зафиксирована | Попросить проверяющего просмотреть комплект и записать замечания/подтверждение |
-| D13 | P2 | Отдельный Grafana dashboard и метрика DB connections не реализованы | Решить по критерию преподавателя, требуется ли добавлять Grafana к локальному monitoring profile |
+| D13 | Закрыто | Grafana dashboard и PostgreSQL connection metrics добавлены в локальный monitoring profile; CI проверяет provisioning и наличие метрик | Внешнюю email/webhook-доставку настраивать только при отдельном требовании; не публиковать monitoring UI |
 
 Проект готов к функциональной демонстрации на локальном стенде; публичный Render-сайт
 также доступен, но это не означает полной production-готовности. Перед окончательной

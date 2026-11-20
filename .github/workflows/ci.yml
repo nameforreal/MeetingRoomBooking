@@ -95,9 +95,15 @@ jobs:
         run: python scripts/e2e_http.py --project mrb-ci
       - name: PostgreSQL suite inside the image
         run: docker compose --env-file docker/test.env -p mrb-ci -f compose.yaml -f compose.test.yaml exec -T app python manage.py test --noinput --settings=config.test_container_settings
+      - name: Start local observability stack
+        run: docker compose --env-file docker/test.env -p mrb-ci -f compose.yaml -f compose.test.yaml -f compose.monitoring.yaml up -d --wait prometheus alertmanager grafana
+      - name: Validate isolated k6 Compose profile
+        run: docker compose --env-file docker/test.env -p mrb-ci -f compose.yaml -f compose.test.yaml -f compose.monitoring.yaml -f compose.load.yaml config --quiet
+      - name: Verify PostgreSQL metrics, Grafana dashboard and Alertmanager
+        run: python scripts/verify_monitoring.py --project mrb-ci
       - name: Logs on failure
         if: failure()
-        run: docker compose --env-file docker/test.env -p mrb-ci -f compose.yaml -f compose.test.yaml logs --tail=80
+        run: docker compose --env-file docker/test.env -p mrb-ci -f compose.yaml -f compose.test.yaml -f compose.monitoring.yaml logs --tail=80
       - name: Stop without deleting containers or volumes
         if: always()
-        run: docker compose --env-file docker/test.env -p mrb-ci -f compose.yaml -f compose.test.yaml stop
+        run: docker compose --env-file docker/test.env -p mrb-ci -f compose.yaml -f compose.test.yaml -f compose.monitoring.yaml stop

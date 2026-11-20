@@ -259,3 +259,58 @@ revision, sequence, exclusion constraint, trigger и django_migrations. Media_da
 - `stop` оставляет данные; healthcheck сам не перезапускает живой unhealthy-процесс.
   Restart policy перезапускает завершившийся процесс. После восстановления DB
   CONN_HEALTH_CHECKS позволяет Django открыть новое соединение.
+
+
+## Локальный Grafana dashboard и k6 load test
+
+Эти сервисы предназначены только для изолированного Docker Compose стенда.
+Не подключайте их к Render, Neon, production DB или публичному адресу.
+Мониторинговые порты привязаны к 127.0.0.1; k6 обращается к proxy внутри Docker-сети.
+
+### Запуск observability
+
+```powershell
+$dc = @('--env-file', 'docker/test.env', '-p', 'mrb-infra-test', '-f', 'compose.yaml', '-f', 'compose.test.yaml')
+$mon = @('--env-file', 'docker/test.env', '-p', 'mrb-infra-test', '-f', 'compose.yaml', '-f', 'compose.test.yaml', '-f', 'compose.monitoring.yaml')
+docker compose @dc up -d --wait db redis
+docker compose @dc run --rm --no-deps app python manage.py migrate --noinput
+docker compose @dc up -d --wait
+docker compose @mon up -d --wait prometheus alertmanager grafana
+python scripts/verify_monitoring.py --project mrb-infra-test
+```
+
+Открыть локально:
+- Grafana: http://127.0.0.1:18091 (admin / isolated-grafana-only — только локальный demo-пароль).
+- Prometheus: http://127.0.0.1:18090.
+- Alertmanager: http://127.0.0.1:18093.
+
+Dashboard **MeetingRoomBooking — Operations** provisioned автоматически. Он показывает
+RPS, HTTP 5xx, p95/p99, PostgreSQL connections/active/max и состояние PostgreSQL/Redis.
+Метрики DB connections читают pg_stat_activity только для PostgreSQL; usernames,
+booking IDs и query strings в labels не попадают. Перед production use сменить
+пароль Grafana, bearer token scrape, закрыть UI от публичного доступа и настроить
+внешний receiver отдельно. Email/webhook не настроены.
+
+### Испытание 1000 виртуальных пользователей
+
+Тест k6 выполняет только GET к каталогу и публичному списку комнат: 80% API и 20% HTML.
+Один VU делает примерно один запрос каждые 8–12 секунд. Профиль постепенно повышает
+нагрузку до 1000 VU, держит пик 60 секунд и затем завершает работу. Это модель около
+100 RPS при 1000 активных виртуальных сессиях, а не 1000 одновременных SQL-записей
+и не тест бронирования. Порог успешности: HTTP errors <1%, p95 <1 секунды.
+
+```powershell
+$load = @('--env-file', 'docker/test.env', '-p', 'mrb-infra-test', '-f', 'compose.yaml', '-f', 'compose.test.yaml', '-f', 'compose.monitoring.yaml', '-f', 'compose.load.yaml')
+docker compose @load run --rm k6
+```
+
+После завершения k6 сохранит сводку в `reports/k6-summary.json`. Зафиксируйте
+реальные VUs, achieved RPS, error rate, p95/p99 и CPU/RAM Docker. Если пороги
+нарушены, результат считается неуспешным; не переписывайте его как успешный.
+Тест не запускать на Render/Neon и не направлять на пользовательский production-сайт.
+
+Остановка сохраняет контейнеры и тома:
+
+```powershell
+docker compose @load stop
+```

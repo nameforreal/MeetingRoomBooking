@@ -1,4 +1,6 @@
 """Verify local Prometheus, Grafana provisioning, PostgreSQL metrics and alerts."""
+
+import argparse
 import base64
 import json
 import os
@@ -8,7 +10,22 @@ from time import monotonic, sleep
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-COMPOSE = ["docker", "compose", "--env-file", "docker/test.env", "-p", "mrb-infra-test", "-f", "compose.yaml", "-f", "compose.test.yaml", "-f", "compose.monitoring.yaml"]
+
+def compose_command(project):
+    return [
+        "docker",
+        "compose",
+        "--env-file",
+        "docker/test.env",
+        "-p",
+        project,
+        "-f",
+        "compose.yaml",
+        "-f",
+        "compose.test.yaml",
+        "-f",
+        "compose.monitoring.yaml",
+    ]
 
 
 def get(url, headers=None):
@@ -32,49 +49,65 @@ def wait_for(check, timeout=60, interval=2):
 
 
 def main():
-    targets = wait_for(
-        lambda: (
-            data["data"]["activeTargets"]
-            if (data := get("http://127.0.0.1:18090/api/v1/targets"))["data"]["activeTargets"]
-            and all(target["health"] == "up" for target in data["data"]["activeTargets"])
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--project", default="mrb-infra-test")
+    args = parser.parse_args()
+    compose = compose_command(args.project)
+
+    def healthy_targets():
+        data = get("http://127.0.0.1:18090/api/v1/targets")
+        targets = data["data"]["activeTargets"]
+        return (
+            targets
+            if targets and all(target["health"] == "up" for target in targets)
             else None
         )
-    )
+
+    targets = wait_for(healthy_targets)
     assert targets, "Prometheus has no healthy application target"
 
-    database_metric = wait_for(
-        lambda: (
-            data["data"]["result"]
-            if (data := get("http://127.0.0.1:18090/api/v1/query?" + urlencode({"query": "mrb_database_connections"})))["status"] == "success"
-            and data["data"]["result"]
-            else None
+    def database_metric_present():
+        url = "http://127.0.0.1:18090/api/v1/query?" + urlencode(
+            {"query": "mrb_database_connections"}
         )
-    )
+        data = get(url)
+        return data["data"]["result"] if data["status"] == "success" else None
 
-    grafana_health = wait_for(lambda: get("http://127.0.0.1:18091/api/health").get("database") == "ok")
+    wait_for(database_metric_present)
+
+    def grafana_ready():
+        data = get("http://127.0.0.1:18091/api/health")
+        return data if data.get("database") == "ok" else None
+
+    grafana_health = wait_for(grafana_ready)
     password = os.environ.get("GRAFANA_ADMIN_PASSWORD", "isolated-grafana-only")
     credentials = base64.b64encode(f"admin:{password}".encode()).decode()
-    dashboard = wait_for(
-        lambda: get(
+
+    def dashboard_ready():
+        data = get(
             "http://127.0.0.1:18091/api/dashboards/uid/meetingroom-ops",
             {"Authorization": f"Basic {credentials}"},
         )
-    )
-    assert dashboard["dashboard"]["uid"] == "meetingroom-ops"
+        return data if data.get("dashboard", {}).get("uid") == "meetingroom-ops" else None
+
+    dashboard = wait_for(dashboard_ready)
 
     observed = False
     try:
-        subprocess.run([*COMPOSE, "stop", "redis"], check=True)
+        subprocess.run([*compose, "stop", "redis"], check=True)
         deadline = monotonic() + 60
         while monotonic() < deadline:
             alerts = get("http://127.0.0.1:18093/api/v2/alerts")
-            if any(alert["labels"].get("alertname") == "RedisUnavailable" for alert in alerts):
+            if any(
+                alert["labels"].get("alertname") == "RedisUnavailable"
+                for alert in alerts
+            ):
                 observed = True
                 break
             sleep(3)
         assert observed, "RedisUnavailable alert did not reach Alertmanager within 60 seconds"
     finally:
-        subprocess.run([*COMPOSE, "start", "redis"], check=True)
+        subprocess.run([*compose, "start", "redis"], check=True)
 
     result = {
         "prometheus_target": "up",
@@ -85,7 +118,9 @@ def main():
         "external_notifications": "not configured",
     }
     Path("reports").mkdir(exist_ok=True)
-    Path("reports/monitoring.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    Path("reports/monitoring.json").write_text(
+        json.dumps(result, indent=2) + "\n", encoding="utf-8"
+    )
     print(json.dumps(result))
 
 
