@@ -11,7 +11,7 @@
 - Публичный сервис Render развёрнут вручную; владелец подтвердил 11/11 сценариев ручной приёмки 20.11.2026, ошибок не обнаружено.
 - Автоматический deploy из GitHub в Render не настроен: Auto Deploy выключен.
 - Локальный мониторинг: Prometheus, Alertmanager и provisioned Grafana dashboard; метрики PostgreSQL connections.
-- Изолированный read-only нагрузочный профиль k6 до 1000 виртуальных пользователей описан в [INFRASTRUCTURE.md](INFRASTRUCTURE.md); реальные результаты появляются только после локального запуска.
+- Изолированный read-only профиль k6 выполнен в CI run №53: достигнуто 1000 VU, 10 576 GET-запросов, 0 ошибок, p95 7,05 мс; средний RPS за весь прогон с ramp-up/down — 62. Это не тест записи бронирований и не нагрузка на Render. Подробности и ограничения — в [DELIVERY.md](DELIVERY.md).
 - Подробная матрица требований, результаты испытаний и ограничения — в [DELIVERY.md](DELIVERY.md).
 - UML-схемы — в [ARCHITECTURE.md](ARCHITECTURE.md); реестр дефектов и ручной приёмки — в [DEFECT_REGISTER.md](DEFECT_REGISTER.md).
 
