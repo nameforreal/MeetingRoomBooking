@@ -64,7 +64,8 @@ GitHub Actions проверяет SQLite/PostgreSQL-наборы, HTTP E2E и с
 
 ## Документация
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — UML component/deployment diagrams.\n- [DEFECT_REGISTER.md](DEFECT_REGISTER.md) — дефекты и приёмка.
+- [ARCHITECTURE.md](ARCHITECTURE.md) — UML component/deployment diagrams.
+- [DEFECT_REGISTER.md](DEFECT_REGISTER.md) — дефекты и приёмка.
 - [BUSINESS_RULES.md](BUSINESS_RULES.md), [API_GUIDE.md](API_GUIDE.md) — контракты.
 - [VIP_APPROVAL.md](VIP_APPROVAL.md), [ROLES.md](ROLES.md) — согласование и права.
 - [CONCURRENCY.md](CONCURRENCY.md), [AUDIT_HISTORY.md](AUDIT_HISTORY.md) — история и блокировки.
