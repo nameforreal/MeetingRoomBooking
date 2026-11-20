@@ -258,7 +258,7 @@ class NeonBootstrapTests(SimpleTestCase):
 
     def client_connection(self, *, ssl_in_use=True):
         return SimpleNamespace(
-            connection=SimpleNamespace(info=SimpleNamespace(ssl_in_use=ssl_in_use))
+            connection=SimpleNamespace(pgconn=SimpleNamespace(ssl_in_use=ssl_in_use))
         )
 
     def test_guard_refuses_production_before_connecting(self):
