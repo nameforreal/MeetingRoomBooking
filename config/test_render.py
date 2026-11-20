@@ -133,6 +133,7 @@ with patch.object(Path, "read_text", guarded_read), patch("socket.socket.connect
     from django.core.management import call_command
     db = settings.DATABASES["default"]
     assert db["OPTIONS"]["sslmode"] == "verify-full"
+    assert db["OPTIONS"]["sslrootcert"]
     assert db["OPTIONS"]["channel_binding"] == "require"
     assert db["OPTIONS"]["prepare_threshold"] is None
     assert db["DISABLE_SERVER_SIDE_CURSORS"] and db["CONN_MAX_AGE"] == 0
@@ -250,10 +251,15 @@ class NeonBootstrapTests(SimpleTestCase):
         cursor = MagicMock()
         cursor.fetchone.side_effect = (
             ([(True,)] if apply else [])
-            + [(180001,), (True,), (True,), (True, True), (False,)]
+            + [(180001,), (True,), (True, True), (False,)]
             + ([(True,), (True,)] if apply else [])
         )
         return cursor
+
+    def client_connection(self, *, ssl_in_use=True):
+        return SimpleNamespace(
+            connection=SimpleNamespace(info=SimpleNamespace(ssl_in_use=ssl_in_use))
+        )
 
     def test_guard_refuses_production_before_connecting(self):
         with (
@@ -278,16 +284,30 @@ class NeonBootstrapTests(SimpleTestCase):
             patch.object(neon_bootstrap, "connection") as db,
             patch.object(neon_bootstrap, "call_command") as migrate,
         ):
+            db.connection = self.client_connection().connection
             db.cursor.return_value.__enter__.return_value = self.cursor()
             self.command().handle(apply=False, confirm_host="")
             migrate.assert_not_called()
             db.close.assert_called_once()
+
+    def test_preflight_uses_client_tls_and_does_not_query_pg_stat_ssl(self):
+        cursor = self.cursor()
+        neon_bootstrap.preflight(cursor, self.client_connection(ssl_in_use=True))
+        executed_sql = "\\n".join(call.args[0] for call in cursor.execute.call_args_list)
+        self.assertNotIn("pg_stat_ssl", executed_sql.lower())
+
+    def test_preflight_rejects_missing_client_tls(self):
+        cursor = self.cursor()
+        with self.assertRaisesMessage(CommandError, "An active TLS connection is required."):
+            neon_bootstrap.preflight(cursor, self.client_connection(ssl_in_use=False))
+        self.assertEqual(cursor.execute.call_count, 1)
 
     def test_apply_checks_guards_and_postconditions(self):
         with (
             patch.object(neon_bootstrap, "connection") as db,
             patch.object(neon_bootstrap, "call_command") as migrate,
         ):
+            db.connection = self.client_connection().connection
             db.cursor.return_value.__enter__.return_value = self.cursor(apply=True)
             self.command().handle(apply=True, confirm_host=FIXTURE["NEON_HOST"])
             migrate.assert_called_once_with("migrate", interactive=False, verbosity=0)
@@ -295,19 +315,19 @@ class NeonBootstrapTests(SimpleTestCase):
 
     def test_nonempty_database_is_never_initialized(self):
         cursor = self.cursor()
-        cursor.fetchone.side_effect = [(180001,), (True,), (True,), (True, True), (True,)]
+        cursor.fetchone.side_effect = [(180001,), (True,), (True, True), (True,)]
         with self.assertRaisesMessage(CommandError, "not empty"):
-            neon_bootstrap.preflight(cursor)
+            neon_bootstrap.preflight(cursor, self.client_connection())
 
-    def test_preflight_rejects_wrong_version_tls_extension_or_privileges(self):
-        good = [(180001,), (True,), (True,), (True, True), (False,)]
-        for index, bad in ((0, (170012,)), (1, (False,)), (2, (False,)), (3, (False, True))):
+    def test_preflight_rejects_wrong_version_extension_or_privileges(self):
+        good = [(180001,), (True,), (True, True), (False,)]
+        for index, bad in ((0, (170012,)), (1, (False,)), (2, (False, True))):
             cursor = MagicMock()
             answers = list(good)
             answers[index] = bad
             cursor.fetchone.side_effect = answers
             with self.subTest(index=index), self.assertRaises(CommandError):
-                neon_bootstrap.preflight(cursor)
+                neon_bootstrap.preflight(cursor, self.client_connection())
 
     def test_migration_error_is_sanitized_without_retry(self):
         with (
@@ -316,6 +336,7 @@ class NeonBootstrapTests(SimpleTestCase):
                 neon_bootstrap, "call_command", side_effect=RuntimeError("credential-must-not-leak")
             ) as migrate,
         ):
+            db.connection = self.client_connection().connection
             db.cursor.return_value.__enter__.return_value = self.cursor(apply=True)
             with self.assertRaises(CommandError) as error:
                 self.command().handle(apply=True, confirm_host=FIXTURE["NEON_HOST"])
