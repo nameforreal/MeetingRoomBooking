@@ -1,4 +1,4 @@
-# Optional LOCAL demonstration. Replace demo scrape credentials before production.
+# Optional LOCAL observability stack. Replace demo credentials before production.
 services:
   prometheus:
     image: prom/prometheus:v3.2.1
@@ -33,6 +33,26 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
+  grafana:
+    image: grafana/grafana:11.6.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-isolated-grafana-only}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+    volumes:
+      - ./docker/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports: ['127.0.0.1:18091:3000']
+    networks: [frontend]
+    mem_limit: 256m
+    cpus: 0.5
+    depends_on:
+      prometheus:
+        condition: service_healthy
 volumes:
   prometheus_data:
   alertmanager_data:
+  grafana_data:

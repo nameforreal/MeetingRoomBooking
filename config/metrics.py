@@ -11,7 +11,6 @@ from django.http import HttpResponse
 from django.views.decorators.http import require_GET
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
-    REGISTRY,
     CollectorRegistry,
     Counter,
     Histogram,
@@ -52,23 +51,53 @@ class MetricsMiddleware:
 class Dependencies:
     def collect(self):
         started = monotonic()
+        database_metrics = None
         try:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1")
                 cursor.fetchone()
-            ready = 1
+                if connection.vendor == "postgresql":
+                    cursor.execute(
+                        "SELECT "
+                        "count(*) FILTER (WHERE datname = current_database()), "
+                        "count(*) FILTER (WHERE datname = current_database() "
+                        "AND state = 'active'), "
+                        "current_setting('max_connections')::integer "
+                        "FROM pg_stat_activity"
+                    )
+                    database_metrics = cursor.fetchone()
+            database_ready = 1
         except DatabaseError:
-            ready = 0
-        yield GaugeMetricFamily("mrb_database_up", "SQL readiness", value=ready)
+            database_ready = 0
+
+        yield GaugeMetricFamily("mrb_database_up", "SQL readiness", value=database_ready)
         yield GaugeMetricFamily(
             "mrb_database_probe_seconds", "SQL probe duration", value=monotonic() - started
         )
+        if database_ready and database_metrics is not None:
+            connections, active_connections, max_connections = database_metrics
+            yield GaugeMetricFamily(
+                "mrb_database_connections",
+                "Current sessions connected to the application database",
+                value=connections,
+            )
+            yield GaugeMetricFamily(
+                "mrb_database_active_connections",
+                "Active sessions connected to the application database",
+                value=active_connections,
+            )
+            yield GaugeMetricFamily(
+                "mrb_database_max_connections",
+                "PostgreSQL server max_connections setting",
+                value=max_connections,
+            )
+
         try:
             cache.get("metrics-readiness")
-            ready = 1
+            cache_ready = 1
         except RedisError:
-            ready = 0
-        yield GaugeMetricFamily("mrb_cache_up", "Cache readiness", value=ready)
+            cache_ready = 0
+        yield GaugeMetricFamily("mrb_cache_up", "Cache readiness", value=cache_ready)
 
 
 @require_GET

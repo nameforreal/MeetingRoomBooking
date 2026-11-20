@@ -29,6 +29,7 @@ FILES = [
     "scripts/load_test.py",
     "scripts/check_coverage.py",
     "config/metrics.py",
+    "rooms/test_metrics.py",
     "config/openapi.py",
     "config/test_delivery.py",
     "docker/gunicorn.conf.py",

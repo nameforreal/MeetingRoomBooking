@@ -1,0 +1,18 @@
+# Optional LOCAL read-only load profile. Never point this at Render/Neon/production.
+services:
+  k6:
+    image: grafana/k6:0.56.0
+    user: "0:0"
+    profiles: ["load"]
+    command: ["run", "--summary-export=/reports/k6-summary.json", "/scripts/meetingroom.js"]
+    environment:
+      BASE_URL: http://proxy:8080
+    volumes:
+      - ./scripts/k6:/scripts:ro
+      - ./reports:/reports
+    networks: [frontend]
+    depends_on:
+      proxy:
+        condition: service_healthy
+    mem_limit: 256m
+    cpus: 1.0
