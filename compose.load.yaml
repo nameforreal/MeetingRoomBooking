@@ -2,6 +2,7 @@
 services:
   k6:
     image: grafana/k6:0.56.0
+    user: "0:0"
     profiles: ["load"]
     command: ["run", "--summary-export=/reports/k6-summary.json", "/scripts/meetingroom.js"]
     environment:
