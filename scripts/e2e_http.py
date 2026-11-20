@@ -11,17 +11,32 @@ from io import StringIO
 import json
 import subprocess
 from urllib.error import HTTPError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPCookieProcessor, Request, build_opener
 from uuid import uuid4
 
 BASE = "http://127.0.0.1:18063"
 
 
+def registration_payload(run):
+    # A single UUID password can resemble the UUID username to Django's
+    # UserAttributeSimilarityValidator (quick_ratio compares character counts).
+    # 73 characters vs. a 36-character username bounds similarity below 0.7,
+    # even if both random UUIDs happen to contain exactly the same characters.
+    password = "E2E-test-" + uuid4().hex + uuid4().hex
+    return {
+        "username": "e2e-" + run,
+        "email": "e2e@example.invalid",
+        "password1": password,
+        "password2": password,
+    }
+
+
 class Session:
     def __init__(self):
         self.cookies = CookieJar()
         self.http = build_opener(HTTPCookieProcessor(self.cookies))
+        self.last_path = None
 
     def request(self, path, data=None, *, method=None, as_json=False, headers=None):
         headers = dict(headers or {})
@@ -43,6 +58,7 @@ class Session:
             )
         except HTTPError as exc:
             response = exc
+        self.last_path = urlsplit(response.geturl()).path
         content = response.read()
         body = (
             json.loads(content)
@@ -51,10 +67,31 @@ class Session:
         )
         return response.status, body, response.headers
 
+    def assert_authenticated(self, status, path, stage):
+        # Never include cookie values, submitted credentials or raw HTML in logs.
+        diagnostic = {
+            "stage": stage,
+            "status": status,
+            "final_path": self.last_path,
+            "cookie_names": sorted(c.name for c in self.cookies),
+        }
+        assert status == 200 and any(c.name == "sessionid" for c in self.cookies), diagnostic
+        assert self.last_path == path, diagnostic
+
+    def register(self, payload):
+        self.cookies.clear()
+        assert self.request("/register/")[0] == 200
+        status, _, _ = self.request("/register/", payload)
+        self.assert_authenticated(status, "/", "registration")
+
     def login(self, username, password):
-        self.request("/login/")
+        # Registration logs the user in. A fresh jar proves login itself works.
+        self.cookies.clear()
+        assert self.request("/login/")[0] == 200
         status, _, _ = self.request("/login/", {"username": username, "password": password})
-        assert status == 200 and any(c.name == "sessionid" for c in self.cookies)
+        self.assert_authenticated(status, "/", "login")
+        status, _, _ = self.request("/my-bookings/")
+        self.assert_authenticated(status, "/my-bookings/", "session reuse")
 
 
 def main():
@@ -62,7 +99,7 @@ def main():
     parser.add_argument("--project", choices=["mrb-infra-test", "mrb-ci"], default="mrb-infra-test")
     args = parser.parse_args()
     run = uuid4().hex
-    password = "E2E-test-" + uuid4().hex
+    registration = registration_payload(run)
     compose = [
         "docker",
         "compose",
@@ -97,17 +134,8 @@ print(json.dumps({'room':normal.pk,'vip':vip.pk}))
     )
     rooms = json.loads(seeded.stdout)
     user, staff, stranger = Session(), Session(), Session()
-    user.request("/register/")
-    user.request(
-        "/register/",
-        {
-            "username": "e2e-" + run,
-            "email": "e2e@example.invalid",
-            "password1": password,
-            "password2": password,
-        },
-    )
-    user.login("e2e-" + run, password)
+    user.register(registration)
+    user.login(registration["username"], registration["password1"])
     staff.login("staff-" + run, "E2E-test-" + run)
     start = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
         hour=10, minute=0, second=0, microsecond=0
