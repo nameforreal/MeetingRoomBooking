@@ -1,33 +1,18 @@
 """Bounded labels, no user/request data; shared counters across Gunicorn workers."""
-
 import hmac
 import os
 from time import monotonic
-
 from django.conf import settings
 from django.core.cache import cache
 from django.db import DatabaseError, connection
 from django.http import HttpResponse
 from django.views.decorators.http import require_GET
-from prometheus_client import (
-    CONTENT_TYPE_LATEST,
-    REGISTRY,
-    CollectorRegistry,
-    Counter,
-    Histogram,
-    generate_latest,
-    multiprocess,
-)
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Histogram, generate_latest, multiprocess
 from prometheus_client.core import GaugeMetricFamily
 from redis.exceptions import RedisError
 
 REQUESTS = Counter("mrb_http_requests_total", "HTTP responses", ["method", "route", "status"])
-LATENCY = Histogram(
-    "mrb_http_duration_seconds",
-    "HTTP latency",
-    ["method", "route"],
-    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5),
-)
+LATENCY = Histogram("mrb_http_duration_seconds", "HTTP latency", ["method", "route"], buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5))
 
 
 class MetricsMiddleware:
@@ -39,11 +24,7 @@ class MetricsMiddleware:
         response = self.get_response(request)
         match = request.resolver_match
         route = match.route if match else "unmatched"
-        method = (
-            request.method
-            if request.method in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
-            else "OTHER"
-        )
+        method = request.method if request.method in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"} else "OTHER"
         REQUESTS.labels(method, route, str(response.status_code)).inc()
         LATENCY.labels(method, route).observe(monotonic() - started)
         return response
@@ -52,36 +33,45 @@ class MetricsMiddleware:
 class Dependencies:
     def collect(self):
         started = monotonic()
+        database_metrics = None
         try:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1")
                 cursor.fetchone()
-            ready = 1
+                if connection.vendor == "postgresql":
+                    cursor.execute(
+                        "SELECT "
+                        "count(*) FILTER (WHERE datname = current_database()), "
+                        "count(*) FILTER (WHERE datname = current_database() AND state = 'active'), "
+                        "current_setting('max_connections')::integer "
+                        "FROM pg_stat_activity"
+                    )
+                    database_metrics = cursor.fetchone()
+            database_ready = 1
         except DatabaseError:
-            ready = 0
-        yield GaugeMetricFamily("mrb_database_up", "SQL readiness", value=ready)
-        yield GaugeMetricFamily(
-            "mrb_database_probe_seconds", "SQL probe duration", value=monotonic() - started
-        )
+            database_ready = 0
+
+        yield GaugeMetricFamily("mrb_database_up", "SQL readiness", value=database_ready)
+        yield GaugeMetricFamily("mrb_database_probe_seconds", "SQL probe duration", value=monotonic() - started)
+        if database_ready and database_metrics is not None:
+            connections, active_connections, max_connections = database_metrics
+            yield GaugeMetricFamily("mrb_database_connections", "Current sessions connected to the application database", value=connections)
+            yield GaugeMetricFamily("mrb_database_active_connections", "Active sessions connected to the application database", value=active_connections)
+            yield GaugeMetricFamily("mrb_database_max_connections", "PostgreSQL server max_connections setting", value=max_connections)
+
         try:
             cache.get("metrics-readiness")
-            ready = 1
+            cache_ready = 1
         except RedisError:
-            ready = 0
-        yield GaugeMetricFamily("mrb_cache_up", "Cache readiness", value=ready)
+            cache_ready = 0
+        yield GaugeMetricFamily("mrb_cache_up", "Cache readiness", value=cache_ready)
 
 
 @require_GET
 def metrics(request):
     token = getattr(settings, "METRICS_TOKEN", "")
     authorization = request.headers.get("Authorization", "")
-    if (
-        not token
-        or not authorization.isascii()
-        or not token.isascii()
-        or len(authorization) != len(token) + len("Bearer ")
-        or not hmac.compare_digest(authorization, "Bearer " + token)
-    ):
+    if not token or not authorization.isascii() or not token.isascii() or len(authorization) != len(token) + len("Bearer ") or not hmac.compare_digest(authorization, "Bearer " + token):
         return HttpResponse(status=404)
     registry = CollectorRegistry()
     if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
