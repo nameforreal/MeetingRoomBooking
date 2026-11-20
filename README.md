@@ -10,7 +10,7 @@
 - GitHub Actions run №21 для этого коммита завершился успешно: jobs `tests` и `container`.
 - Публичный сервис Render развёрнут вручную; доступ к сайту, вход и оба визуальных исправления подтверждены владельцем.
 - Автоматический deploy из GitHub в Render не настроен: Auto Deploy выключен. Полная ручная приёмка всех сценариев на публичном сайте ещё не завершена.
-- Подробная матрица требований, результаты испытаний и оставшиеся ограничения — в [DELIVERY.md](DELIVERY.md).
+- Подробная матрица требований, результаты испытаний и ограничения — в [DELIVERY.md](DELIVERY.md).\n- UML-схемы — в [ARCHITECTURE.md](ARCHITECTURE.md); реестр дефектов и ручной приёмки — в [DEFECT_REGISTER.md](DEFECT_REGISTER.md).
 
 
 ## Установка
@@ -63,7 +63,7 @@ GitHub Actions проверяет SQLite/PostgreSQL-наборы, HTTP E2E и с
 
 ## Документация
 
-- [BUSINESS_RULES.md](BUSINESS_RULES.md), [API_GUIDE.md](API_GUIDE.md) — контракты.
+- [ARCHITECTURE.md](ARCHITECTURE.md) — UML component/deployment diagrams.\n- [DEFECT_REGISTER.md](DEFECT_REGISTER.md) — дефекты и приёмка.\n- [BUSINESS_RULES.md](BUSINESS_RULES.md), [API_GUIDE.md](API_GUIDE.md) — контракты.
 - [VIP_APPROVAL.md](VIP_APPROVAL.md), [ROLES.md](ROLES.md) — согласование и права.
 - [CONCURRENCY.md](CONCURRENCY.md), [AUDIT_HISTORY.md](AUDIT_HISTORY.md) — история и блокировки.
 - [MIGRATION_SAFETY.md](MIGRATION_SAFETY.md), [CSV_EXPORT.md](CSV_EXPORT.md) — безопасность.
