@@ -133,6 +133,60 @@ class CatalogTests(unittest.TestCase):
         with connection.cursor() as cursor:
             require_empty(cursor)
 
+    def test_exact_neon_default_privileges_are_exempt(self):
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute("CREATE ROLE cloud_admin")
+                cursor.execute("CREATE ROLE neon_superuser")
+
+                cursor.execute("""
+                    ALTER DEFAULT PRIVILEGES FOR ROLE cloud_admin
+                    IN SCHEMA public
+                    GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, MAINTAIN
+                    ON TABLES TO neon_superuser WITH GRANT OPTION
+                """)
+
+                cursor.execute("""
+                    ALTER DEFAULT PRIVILEGES FOR ROLE cloud_admin
+                    IN SCHEMA public
+                    GRANT SELECT, UPDATE, USAGE
+                    ON SEQUENCES TO neon_superuser WITH GRANT OPTION
+                """)
+
+                cursor.execute("""
+                    SELECT d.defaclobjtype, d.defaclacl::text
+                    FROM pg_default_acl d
+                    JOIN pg_roles r ON r.oid = d.defaclrole
+                    JOIN pg_namespace n ON n.oid = d.defaclnamespace
+                    WHERE r.rolname = 'cloud_admin'
+                      AND n.nspname = 'public'
+                """)
+
+                actual = dict(cursor.fetchall())
+
+                self.assertEqual(
+                    actual,
+                    {
+                        "S": "{neon_superuser=r*w*U*/cloud_admin}",
+                        "r": "{neon_superuser=a*r*w*d*D*m*/cloud_admin}",
+                    },
+                )
+
+                # Exact Neon defaults must not block initialization.
+                require_empty(cursor)
+
+                # Any additional privilege changes the ACL and must be rejected.
+                cursor.execute("""
+                    ALTER DEFAULT PRIVILEGES FOR ROLE cloud_admin
+                    IN SCHEMA public
+                    GRANT REFERENCES ON TABLES TO neon_superuser
+                """)
+
+                with self.assertRaises(CommandError):
+                    require_empty(cursor)
+
+            transaction.set_rollback(True)
+
     def test_each_object_category_is_rejected(self):
         statements = [
             "CREATE TABLE probe(id int)",

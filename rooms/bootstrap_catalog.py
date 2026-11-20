@@ -28,7 +28,30 @@ WITH user_ns AS (
  UNION ALL SELECT 1 FROM pg_publication
  UNION ALL SELECT 1 FROM pg_subscription
  UNION ALL SELECT 1 FROM pg_largeobject_metadata
- UNION ALL SELECT 1 FROM pg_default_acl
+UNION ALL
+SELECT 1
+FROM pg_default_acl d
+JOIN pg_roles owner_role
+    ON owner_role.oid = d.defaclrole
+LEFT JOIN pg_namespace schema_ns
+    ON schema_ns.oid = d.defaclnamespace
+WHERE NOT (
+    owner_role.rolname = 'cloud_admin'
+    AND COALESCE(schema_ns.nspname, '') = 'public'
+    AND (
+        (
+            d.defaclobjtype = 'S'
+            AND COALESCE(d.defaclacl::text, '') =
+                '{neon_superuser=r*w*U*/cloud_admin}'
+        )
+        OR (
+            d.defaclobjtype = 'r'
+            AND COALESCE(d.defaclacl::text, '') =
+                '{neon_superuser=a*r*w*d*D*m*/cloud_admin}'
+        )
+    )
+)
+
 )
 SELECT EXISTS (SELECT 1 FROM objects)
 """
