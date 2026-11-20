@@ -9,6 +9,7 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from datetime import timedelta, datetime, time
+import re
 from django.db.models import Q
 
 from .models import Room
@@ -52,6 +53,16 @@ def room_detail(request, room_id):
 def about(request):
     return render(request, "rooms/about.html")
 
+def catalog_room_sort_key(room):
+    """Order catalog rooms by their number, then list unnumbered rooms by name."""
+    number = re.search(r"\d+", room.name)
+    return (
+        number is None,
+        int(number.group()) if number else 0,
+        room.name.casefold(),
+        room.pk,
+    )
+
 def catalog(request):
     rooms = Room.objects.filter(is_active=True)
     query = request.GET.get("q", "").strip()[:80]
@@ -71,7 +82,7 @@ def catalog(request):
     else:
         room_type = "all"
 
-    rooms = list(rooms)
+    rooms = sorted(rooms, key=catalog_room_sort_key)
     for room in rooms:
         room.photo_filename = photo_for_room(room)
 
