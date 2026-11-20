@@ -57,11 +57,7 @@ def main():
     def healthy_targets():
         data = get("http://127.0.0.1:18090/api/v1/targets")
         targets = data["data"]["activeTargets"]
-        return (
-            targets
-            if targets and all(target["health"] == "up" for target in targets)
-            else None
-        )
+        return targets if targets and all(target["health"] == "up" for target in targets) else None
 
     targets = wait_for(healthy_targets)
     assert targets, "Prometheus has no healthy application target"
@@ -98,10 +94,7 @@ def main():
         deadline = monotonic() + 60
         while monotonic() < deadline:
             alerts = get("http://127.0.0.1:18093/api/v2/alerts")
-            if any(
-                alert["labels"].get("alertname") == "RedisUnavailable"
-                for alert in alerts
-            ):
+            if any(alert["labels"].get("alertname") == "RedisUnavailable" for alert in alerts):
                 observed = True
                 break
             sleep(3)
