@@ -4,6 +4,16 @@
 Поддерживает Permissions/Groups, VIP-согласование, revision, идемпотентное создание,
 защищённую историю, аудит и CSV-экспорт по комнате и датам.
 
+## Текущее состояние — 20 ноября 2026
+
+- Последний коммит кода в `main`: `0cb34a0`; исправлены адаптивность шапки и числовая сортировка каталога.
+- GitHub Actions run №21 для этого коммита завершился успешно: jobs `tests` и `container`.
+- Публичный сервис Render развёрнут вручную; доступ к сайту, вход и оба визуальных исправления подтверждены владельцем.
+- Автоматический deploy из GitHub в Render не настроен: Auto Deploy выключен. Полная ручная приёмка всех сценариев на публичном сайте ещё не завершена.
+- Подробная матрица требований, результаты испытаний и ограничения — в [DELIVERY.md](DELIVERY.md).
+- UML-схемы — в [ARCHITECTURE.md](ARCHITECTURE.md); реестр дефектов и ручной приёмки — в [DEFECT_REGISTER.md](DEFECT_REGISTER.md).
+
+
 ## Установка
 
 Полная инструкция для Windows, Docker, HTTPS, CI и backup/restore:
@@ -50,10 +60,12 @@ python scripts/e2e_http.py
 
 Для Windows runserver и собственного окружения следуйте INFRASTRUCTURE.md.
 SQLite не считается доказательством PostgreSQL-блокировок и триггеров.
-CI проверяет оба набора и собирает образ; публикация/автодеплой не включены.
+GitHub Actions проверяет SQLite/PostgreSQL-наборы, HTTP E2E и собирает контейнерный образ. Workflow не развёртывает приложение в Render автоматически: текущая публикация выполнена вручную, Auto Deploy выключен.
 
 ## Документация
 
+- [ARCHITECTURE.md](ARCHITECTURE.md) — UML component/deployment diagrams.
+- [DEFECT_REGISTER.md](DEFECT_REGISTER.md) — дефекты и приёмка.
 - [BUSINESS_RULES.md](BUSINESS_RULES.md), [API_GUIDE.md](API_GUIDE.md) — контракты.
 - [VIP_APPROVAL.md](VIP_APPROVAL.md), [ROLES.md](ROLES.md) — согласование и права.
 - [CONCURRENCY.md](CONCURRENCY.md), [AUDIT_HISTORY.md](AUDIT_HISTORY.md) — история и блокировки.
