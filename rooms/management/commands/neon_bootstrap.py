@@ -37,7 +37,8 @@ def preflight(cursor, django_connection):
         raise CommandError("This bootstrap procedure requires PostgreSQL 18.")
     # Check the client-side Psycopg TLS session; Neon may terminate TLS at its proxy.
     client_connection = django_connection.connection
-    if client_connection is None or not getattr(client_connection.info, "ssl_in_use", False):
+    client_info = getattr(client_connection, "info", None)
+    if not getattr(client_info, "ssl_in_use", False):
         raise CommandError("An active TLS connection is required.")
     cursor.execute(
         "SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'btree_gist')"
