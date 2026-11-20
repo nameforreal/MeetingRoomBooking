@@ -101,6 +101,16 @@ jobs:
         run: docker compose --env-file docker/test.env -p mrb-ci -f compose.yaml -f compose.test.yaml -f compose.monitoring.yaml -f compose.load.yaml config --quiet
       - name: Verify PostgreSQL metrics, Grafana dashboard and Alertmanager
         run: python scripts/verify_monitoring.py --project mrb-ci
+      - name: Run isolated 1000-VU read-only load test
+        run: docker compose --env-file docker/test.env -p mrb-ci -f compose.yaml -f compose.test.yaml -f compose.monitoring.yaml -f compose.load.yaml run --rm k6
+      - name: Upload k6 load-test summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mrb-k6-load-summary
+          path: reports/k6-summary.json
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Logs on failure
         if: failure()
         run: docker compose --env-file docker/test.env -p mrb-ci -f compose.yaml -f compose.test.yaml -f compose.monitoring.yaml logs --tail=80
