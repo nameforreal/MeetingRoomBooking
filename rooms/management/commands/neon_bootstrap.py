@@ -31,12 +31,13 @@ def validate_target(*, apply, confirm_host):
     verify_endpoint(db["HOST"])
 
 
-def preflight(cursor):
+def preflight(cursor, django_connection):
     cursor.execute("SELECT current_setting('server_version_num')::int")
     if not 180000 <= cursor.fetchone()[0] < 190000:
         raise CommandError("This bootstrap procedure requires PostgreSQL 18.")
-    cursor.execute("SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()")
-    if cursor.fetchone() != (True,):
+    # Check the client-side Psycopg TLS session; Neon may terminate TLS at its proxy.
+    client_connection = django_connection.connection
+    if client_connection is None or not getattr(client_connection.info, "ssl_in_use", False):
         raise CommandError("An active TLS connection is required.")
     cursor.execute(
         "SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'btree_gist')"
@@ -72,7 +73,7 @@ class Command(BaseCommand):
                     locked = cursor.fetchone()[0]
                     if not locked:
                         raise CommandError("Another initialization is running.")
-                preflight(cursor)
+                preflight(cursor, connection)
             if not options["apply"]:
                 self.stdout.write(
                     "Preflight passed: PostgreSQL 18, TLS, empty database, btree_gist available. No changes applied."
