@@ -256,6 +256,17 @@ backup восстанавливается в новую БД, оператор �
 остановить запись, сохранить логи/backup и использовать совместимую схему;
 не выполнять downgrade непустой истории. Решение go/no-go принимает владелец проекта.
 
+## Комплект документации
+
+- [README.md](README.md) — обзор, запуск и ссылки на материалы.
+- [ARCHITECTURE.md](ARCHITECTURE.md) — UML component/deployment diagrams, профили Render и Docker Compose, CI pipeline.
+- [API_GUIDE.md](API_GUIDE.md) и `/api/schema/` — API / OpenAPI.
+- [ROLES.md](ROLES.md) — модель прав и соответствие Role из ИСП49.
+- [INFRASTRUCTURE.md](INFRASTRUCTURE.md), [HOSTING_RENDER.md](HOSTING_RENDER.md) — установка и облачный профиль.
+- [MIGRATION_SAFETY.md](MIGRATION_SAFETY.md) — миграции и backup/restore.
+- [DEFECT_REGISTER.md](DEFECT_REGISTER.md) — ручная приёмка и реестр дефектов.
+- `reports/` — coverage, load-test и monitoring JSON.
+
 ## Реестр оставшихся ограничений
 
 | ID | Приоритет | Ограничение | Следующее действие |
