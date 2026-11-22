@@ -28,7 +28,12 @@ def populate_role_metadata(apps, schema_editor):
 
 def protect_role_metadata(apps, schema_editor):
     Role = apps.get_model("rooms", "Role")
-    if Role.objects.using(schema_editor.connection.alias).exists():
+    using = schema_editor.connection.alias
+    if schema_editor.connection.vendor == "postgresql":
+        table = schema_editor.quote_name(Role._meta.db_table)
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute(f"LOCK TABLE {table} IN ACCESS EXCLUSIVE MODE")
+    if Role.objects.using(using).exists():
         raise IrreversibleError(
             "Role metadata is populated; preserve role records instead of reversing 0010_role_model."
         )
@@ -45,16 +50,16 @@ class Migration(migrations.Migration):
             name="Role",
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("code", models.SlugField(max_length=100, unique=True, verbose_name="Код роли")),
-                ("description", models.TextField(blank=True, verbose_name="Описание")),
-                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")),
-                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="Дата изменения")),
                 ("group", models.OneToOneField(
                     on_delete=django.db.models.deletion.PROTECT,
                     related_name="meetingroom_role",
                     to="auth.group",
                     verbose_name="Группа разрешений",
                 )),
+                ("code", models.SlugField(max_length=100, unique=True, verbose_name="Код роли")),
+                ("description", models.TextField(blank=True, verbose_name="Описание")),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")),
+                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="Дата изменения")),
             ],
             options={
                 "verbose_name": "Роль",
