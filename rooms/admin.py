@@ -1,6 +1,6 @@
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
-from .models import Room, Booking, AuditEvent
+from .models import Room, Booking, AuditEvent, Role
 from . import audit, account_operations
 from .csv_export import export_bookings
 from urllib.parse import urlencode
@@ -42,6 +42,23 @@ class HistoryAdminMixin:
             raise PermissionDenied
         query = urlencode({"object_type__exact": self.model._meta.model_name, "object_id__exact": object_id})
         return HttpResponseRedirect(reverse("admin:rooms_auditevent_changelist") + "?" + query)
+
+
+@admin.register(Role)
+class RoleAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "group", "updated_at")
+    list_select_related = ("group",)
+    search_fields = ("group__name", "code", "description")
+    ordering = ("group__name",)
+    readonly_fields = ("group", "code", "created_at", "updated_at")
+    fields = ("group", "code", "description", "created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        # Roles are provisioned by the idempotent setup_roles command.
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Room)
