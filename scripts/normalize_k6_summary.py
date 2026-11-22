@@ -44,9 +44,7 @@ def _threshold_result(metric, expression, observed, limit, unit, passed, require
     elif not isinstance(exceeded, bool):
         raise ValueError(f"k6 threshold flag must be boolean: {expression}")
     elif exceeded != (not passed):
-        raise ValueError(
-            f"k6 threshold flag disagrees with measured value: {expression}"
-        )
+        raise ValueError(f"k6 threshold flag disagrees with measured value: {expression}")
 
     return {
         "expression": expression,
