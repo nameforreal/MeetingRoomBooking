@@ -36,6 +36,13 @@ docker compose @dc up -d --wait
 Облачный профиль Render Free + Neon описан в [HOSTING_RENDER.md](HOSTING_RENDER.md).
 Он использует отдельный Dockerfile и не переключает локальный Compose на облако.
 
+## IDE (VS Code)
+
+Рекомендуемые расширения и настройки Ruff, Docker, GitLens и YAML хранятся
+в `.vscode/extensions.json` и `.vscode/settings.json`. VS Code предложит
+установить расширения при открытии проекта; Python interpreter выбирается
+из активного виртуального окружения.
+
 ## Windows venv и проверки
 
 ```powershell
@@ -65,6 +72,10 @@ GitHub Actions проверяет SQLite/PostgreSQL-наборы, HTTP E2E, мо
 
 ## Документация
 
+- [TECHNICAL_SPECIFICATION.md](TECHNICAL_SPECIFICATION.md) — краткое ТЗ.
+- [PROJECT_PLAN.md](PROJECT_PLAN.md) — этапы, сроки и риски.
+- [REQUIREMENTS_CHECKLIST.md](REQUIREMENTS_CHECKLIST.md) — сверка восьми разделов задания.
+- [IMPACT_ANALYSIS.md](IMPACT_ANALYSIS.md) — влияние VIP/CSV изменений.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — UML component/deployment diagrams.
 - [DEFECT_REGISTER.md](DEFECT_REGISTER.md) — дефекты и приёмка.
 - [BUSINESS_RULES.md](BUSINESS_RULES.md), [API_GUIDE.md](API_GUIDE.md) — контракты.
