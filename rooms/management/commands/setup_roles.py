@@ -15,11 +15,26 @@ ROLE_PERMISSIONS = {
     "Operations Administrators": BOOKINGS | ROOMS | USERS,
 }
 ROLE_METADATA = {
-    "Booking Viewers": ("booking-viewers", "Просмотр бронирований и каталога переговорных."),
-    "Booking Managers": ("booking-managers", "Просмотр бронирований и согласование VIP-заявок."),
-    "Room Managers": ("room-managers", "Создание, изменение, архивирование и восстановление переговорных."),
-    "User Managers": ("user-managers", "Управление обычными учётными записями в пределах назначенных разрешений."),
-    "Operations Administrators": ("operations-administrators", "Объединённые разрешения управления бронированиями, комнатами и пользователями."),
+    "Booking Viewers": (
+        "booking-viewers",
+        "Просмотр бронирований и каталога переговорных.",
+    ),
+    "Booking Managers": (
+        "booking-managers",
+        "Просмотр бронирований и согласование VIP-заявок.",
+    ),
+    "Room Managers": (
+        "room-managers",
+        "Создание, изменение, архивирование и восстановление переговорных.",
+    ),
+    "User Managers": (
+        "user-managers",
+        "Управление обычными учётными записями в пределах назначенных разрешений.",
+    ),
+    "Operations Administrators": (
+        "operations-administrators",
+        "Объединённые разрешения управления бронированиями, комнатами и пользователями.",
+    ),
 }
 
 
