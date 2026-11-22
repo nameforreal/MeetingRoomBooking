@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from . import booking_operations
 
-LATEST = "0009_user_activity_guard"
+LATEST = "0010_role_model"
 
 
 class MigrationHelpers:
@@ -39,7 +39,7 @@ class MigrationHelpers:
 
     def snapshot(self, apps):
         snapshot = {}
-        for name in ("Room", "Booking", "AuditEvent", "BookingCreationRequest"):
+        for name in ("Room", "Booking", "AuditEvent", "BookingCreationRequest", "Role"):
             try:
                 model = apps.get_model("rooms", name)
             except LookupError:
@@ -71,9 +71,9 @@ class MigrationHelpers:
         applied = self.applied()
         with connection.cursor() as cursor:
             cursor.execute("SELECT count(*) FROM pg_trigger WHERE tgname='meetingroom_user_activity_guard' AND NOT tgisinternal")
-            self.assertEqual(cursor.fetchone()[0], int(("rooms", LATEST) in applied))
+            self.assertEqual(cursor.fetchone()[0], int(("rooms", "0009_user_activity_guard") in applied))
             cursor.execute("SELECT count(*) FROM pg_proc WHERE proname='meetingroom_guard_user_activity' AND pronamespace=current_schema()::regnamespace")
-            self.assertEqual(cursor.fetchone()[0], int(("rooms", LATEST) in applied))
+            self.assertEqual(cursor.fetchone()[0], int(("rooms", "0009_user_activity_guard") in applied))
             cursor.execute("SELECT count(*) FROM pg_constraint WHERE conname='booking_no_active_overlap'")
             self.assertEqual(cursor.fetchone()[0], int(("rooms", "0005_booking_concurrency") in applied))
 
@@ -100,6 +100,21 @@ class MigrationSafetyTests(MigrationHelpers, TransactionTestCase):
             with connection.cursor() as cursor:
                 cursor.execute("SELECT count(*) FROM pg_extension WHERE extname='btree_gist'")
                 self.assertEqual(cursor.fetchone()[0], 1)  # Never drop a possibly shared extension.
+
+    def test_existing_groups_receive_role_metadata_on_upgrade(self):
+        apps = self.migrate("0009_user_activity_guard")
+        group = apps.get_model("auth", "Group").objects.create(name="Legacy Role")
+        apps = self.migrate(LATEST)
+        role = apps.get_model("rooms", "Role").objects.get(group_id=group.pk)
+        self.assertEqual(role.code, "legacy-role")
+        self.assertEqual(role.description, "")
+
+    def test_role_metadata_cannot_be_dropped(self):
+        group = self.apps.get_model("auth", "Group").objects.create(name="Protected Role")
+        self.apps.get_model("rooms", "Role").objects.create(
+            group_id=group.pk, code="protected-role", description="Keep this role metadata."
+        )
+        self.assert_refused_unchanged("0009_user_activity_guard", "Role")
 
     def test_latest_booking_without_audit_already_prevents_guard_removal(self):
         self.seed_booking()
