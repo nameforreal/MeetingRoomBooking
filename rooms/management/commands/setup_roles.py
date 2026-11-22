@@ -1,7 +1,8 @@
 from django.contrib.auth.models import Permission
-from rooms.models import Role
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+
+from rooms.models import Role
 
 BOOKINGS = {"rooms.view_booking", "rooms.change_booking", "rooms.view_room"}
 ROOMS = {"rooms.view_room", "rooms.add_room", "rooms.change_room"}
