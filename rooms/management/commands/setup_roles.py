@@ -1,4 +1,5 @@
-from django.contrib.auth.models import Group, Permission
+from django.contrib.auth.models import Permission
+from rooms.models import Role
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -27,6 +28,6 @@ class Command(BaseCommand):
                     permissions.append(Permission.objects.get(content_type__app_label=app, codename=codename))
                 except Permission.DoesNotExist as exc:
                     raise CommandError(f"Missing permission {label}; apply migrations first.") from exc
-            group, created = Group.objects.get_or_create(name=name)
-            group.permissions.add(*permissions)
+            role, created = Role.objects.get_or_create(name=name)
+            role.permissions.add(*permissions)
             self.stdout.write(f"{name}: {'created' if created else 'updated'}; {', '.join(sorted(labels))}")
