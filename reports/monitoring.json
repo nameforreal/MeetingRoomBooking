@@ -1,5 +1,12 @@
 {
-  "scrape": "up",
-  "RedisUnavailable_received_by_alertmanager": true,
+  "prometheus_target": "up",
+  "postgres_connection_metric": "present",
+  "grafana": {
+    "database": "ok",
+    "version": "11.6.0",
+    "commit": "d2fdff9ee4d75c74bfd3a97c18a0b8e4d029f06e"
+  },
+  "dashboard_uid": "meetingroom-ops",
+  "redis_alert_received_by_alertmanager": true,
   "external_notifications": "not configured"
 }

@@ -1,0 +1,24 @@
+{
+  "source": "GitHub Actions run #59",
+  "workflow_run_url": "https://github.com/nameforreal/MeetingRoomBooking/actions/runs/44780885738",
+  "commit": "393bc9e8ca93d8e66fd63a5535dd330c900c1baa",
+  "profile": "scripts/k6/meetingroom.js",
+  "environment": "isolated GitHub Actions Docker Compose test stack",
+  "max_vus": 1000,
+  "plateau_seconds": 60,
+  "requests": 10563,
+  "http_errors": 0,
+  "checks_passed": 10562,
+  "checks_total": 10562,
+  "average_rps_full_profile": 61.8,
+  "average_response_ms": 5.02,
+  "p95_ms": 9.18,
+  "p99_ms": 29.56,
+  "max_response_ms": 205.65,
+  "scope": "read-only GET requests: 80% /api/rooms/ and 20% /rooms/; no authenticated booking writes",
+  "limitations": [
+    "The average RPS is calculated over the complete ramp-up, plateau and ramp-down profile.",
+    "This is a virtual-user session test, not 1000 simultaneous in-flight HTTP requests.",
+    "It does not validate concurrent booking writes, long-duration mixed workloads, production Render capacity or host-specific CPU/RAM sizing."
+  ]
+}

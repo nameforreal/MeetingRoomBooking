@@ -203,16 +203,44 @@ client. Docker target `test` добавляет coverage, а production target �
 Python/pip cache, PostgreSQL service 17.12, Redis service. Обязательны check,
 makemigrations, оба полных набора тестов, ruff, formatting, diff, сборка образа,
 HTTP smoke, проверки отказов/сохранности и PostgreSQL-тесты внутри образа.
-Сборка использует BuildKit GitHub cache, push=false. Ошибка обязательного шага
-останавливает job; finally останавливает только собственный тестовый проект.
+Сборка использует BuildKit GitHub cache. Сначала собирается test target, который
+используется для интеграционных проверок; после успешных проверок отдельно
+собирается production target. Образ экспортируется в
+`meetingroom-production-image.tar` и прикладывается к workflow как artifact
+`meetingroom-production-image` со сроком хранения 30 дней. Скачать его можно в
+разделе Artifacts успешного GitHub Actions run, затем импортировать командой
+`docker load -i meetingroom-production-image.tar`. Это сборка runtime образа,
+а не публикация в постоянный registry. Ошибка обязательного шага останавливает job;
+finally останавливает только собственный тестовый проект.
 
 Ruff проверяет синтаксические/семантические ошибки во всём проекте (E9/F63/F7/F82).
 Format gate охватывает новые инфраструктурные Python-файлы; прежние файлы не
 переформатированы. Это сознательное ограничение охвата, а не заявление, что весь
 исторический код соответствует стилю Ruff. Настройте branch protection на оба jobs.
-CI не требует пользовательских GitHub Secrets. Автодеплой на сервер и отправка
-образов в registry не включены: адрес/credentials/политика выпуска не согласованы.
-Workflow проверяется локально, реальный GitHub run появится после push владельцем.
+CI не требует пользовательских GitHub Secrets. Автодеплой на Render и публикация
+внешнего registry не включены: Render Auto Deploy выключен, credentials/политика
+выпуска не согласованы. GitHub Actions при этом выполняет CI и сохраняет скачиваемый
+production image artifact.
+
+## Отказоустойчивость и репликация БД
+
+Текущий Compose-профиль использует один экземпляр PostgreSQL и не включает
+streaming replication, автоматический failover или отдельную read replica.
+Это осознанная конфигурация изолированного учебного/демонстрационного стенда,
+а не отказоустойчивая production-топология.
+
+Для production-профиля следует выбрать managed PostgreSQL с подтверждённой
+HA/standby-схемой либо отдельно развернуть primary + hot standby с контролируемым
+failover. Записи направляются только на primary; чтение с реплики допустимо
+только для явно выбранных read-only запросов с учётом задержки репликации.
+До запуска необходимо согласовать RPO/RTO, проверить failover и восстановление,
+включить point-in-time recovery и хранить backup отдельно от основного сервера.
+В этом проекте проверено восстановление тестовой копии в новую изолированную БД;
+репликация и production failover не испытывались.
+
+Health/readiness реализован через `/health/` и Docker healthchecks. При отказе
+PostgreSQL readiness возвращает HTTP 503; недоступность Redis отражается отдельно
+и не приводит к потере бизнес-данных, так как Redis хранит только некритичный cache.
 
 ## Backup / restore
 
@@ -309,12 +337,13 @@ docker compose @load run --rm k6
 нарушены, результат считается неуспешным; не переписывайте его как успешный.
 Тест не запускать на Render/Neon и не направлять на пользовательский production-сайт.
 
-Результат CI run №53 (GitHub Actions, изолированный Docker Compose): достигнуто
-1000 VU, 10 576 GET-запросов, 0 HTTP-ошибок, checks 100%, средний RPS за весь
-прогон 62, p95 7,05 мс, p99 21,19 мс. Сводка доступна как artifact в
-[workflow run №53](https://github.com/nameforreal/MeetingRoomBooking/actions/runs/44776170424).
+Результат CI run №59 (GitHub Actions, изолированный Docker Compose): достигнуто
+1000 VU на 60-секундном плато, 10 563 GET-запроса, 0 HTTP-ошибок,
+10 562/10 562 успешных checks, средний RPS за весь профиль 61,8,
+p95 9,18 мс, p99 29,56 мс, максимум 205,65 мс. Сводка доступна как artifact
+в [workflow run №59](https://github.com/nameforreal/MeetingRoomBooking/actions/runs/44780885738).
 Это не подтверждает нагрузку записи бронирований, длительную смешанную нагрузку
-или производительность Render; локальный повтор нужен только для измерения ресурсов
+или производительность Render; локальный повтор нужен для измерения CPU/RAM
 конкретной машины.
 
 Остановка сохраняет контейнеры и тома:
