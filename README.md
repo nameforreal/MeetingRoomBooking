@@ -6,7 +6,7 @@
 
 ## Текущее состояние — 22 ноября 2026
 
-- Реализованы бронирования, VIP-согласование, аудит, CSV, OpenAPI и разграничение доступа; роли используют Django `auth.Group` + `auth.Permission` без отдельной таблицы `Role`.
+- Реализованы бронирования, VIP-согласование, аудит, CSV, OpenAPI и разграничение доступа; отдельная модель `rooms.Role` хранит код/описание и связана с Django `auth.Group`, которая остаётся источником permissions.
 - GitHub Actions проверяет push/PR: тесты, Ruff, форматирование, PostgreSQL, HTTP E2E, Docker, Grafana/Alertmanager и k6.
 - Успешный CI run №59 подтвердил 1000 VU в изолированном read-only профиле: 10 563 GET-запроса, 0 HTTP-ошибок, p95 9,18 мс. Это не тест записи бронирований и не нагрузка на Render.
 - Production Docker image собирается отдельным target и прикладывается к успешному workflow как скачиваемый artifact `meetingroom-production-image` (30 дней).
