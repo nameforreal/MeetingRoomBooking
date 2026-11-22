@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from . import booking_operations
 
-LATEST = "0010_role_proxy"
+LATEST = "0009_user_activity_guard"
 
 
 class MigrationHelpers:
@@ -71,9 +71,9 @@ class MigrationHelpers:
         applied = self.applied()
         with connection.cursor() as cursor:
             cursor.execute("SELECT count(*) FROM pg_trigger WHERE tgname='meetingroom_user_activity_guard' AND NOT tgisinternal")
-            self.assertEqual(cursor.fetchone()[0], int(("rooms", "0009_user_activity_guard") in applied))
+            self.assertEqual(cursor.fetchone()[0], int(("rooms", LATEST) in applied))
             cursor.execute("SELECT count(*) FROM pg_proc WHERE proname='meetingroom_guard_user_activity' AND pronamespace=current_schema()::regnamespace")
-            self.assertEqual(cursor.fetchone()[0], int(("rooms", "0009_user_activity_guard") in applied))
+            self.assertEqual(cursor.fetchone()[0], int(("rooms", LATEST) in applied))
             cursor.execute("SELECT count(*) FROM pg_constraint WHERE conname='booking_no_active_overlap'")
             self.assertEqual(cursor.fetchone()[0], int(("rooms", "0005_booking_concurrency") in applied))
 
