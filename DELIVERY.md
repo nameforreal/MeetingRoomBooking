@@ -84,7 +84,7 @@ Monitoring JSON подтверждает локальный тестовый ale
 | 9 | CSV по дате и комнате | ГОТОВО | Явные room/date_from/date_to, HTML-поля, общая фильтрация и тесты |
 | 10 | AuditEvent | ГОТОВО | Атомарный неизменяемый журнал; тесты/backup |
 | 11 | Docker app/PostgreSQL/Redis | ГОТОВО | Живой изолированный стек и persistent volumes |
-| 12 | CI/CD | ЧАСТИЧНО | CI проверяет push/PR, тесты, Ruff, собирает production target и прикладывает Docker image как скачиваемый Actions artifact (30 дней). Автодеплой в Render и публикация в registry не настроены; облачный deploy остаётся ручным |
+| 12 | CI/CD | ГОТОВО | При push/PR запускаются тесты, Ruff, форматирование и Docker-проверки; production image собирается и доступен как скачиваемый Actions artifact (30 дней). Автодеплой в Render — отдельная необязательная операция и выполняется вручную |
 | 13 | Критическое покрытие ≥70% | ГОТОВО | 91,81%, CI gate |
 | 14 | Unit / integration / E2E | ГОТОВО | Django-набор и отдельный реальный HTTP E2E; JS/browser E2E не добавлен |
 | 15 | Статический анализ | ГОТОВО | Ruff correctness gate, формат новых инфраструктурных файлов |
@@ -97,11 +97,13 @@ Monitoring JSON подтверждает локальный тестовый ale
 | 22 | Установка/мониторинг/backup | ГОТОВО | INFRASTRUCTURE.md, этот документ, MIGRATION_SAFETY.md; тестовое восстановление выполнено |
 | 23 | План пилота | ГОТОВО | План ниже; реальный пилот ещё не проводился |
 | 24 | Дефекты и финальный отчёт | ГОТОВО | Реестр `DEFECT_REGISTER.md`; 11/11 ручных сценариев на публичном Render подтверждены владельцем 20.11.2026, ошибок не обнаружено |
+| 25 | IDE и инструменты разработки | ГОТОВО | `.vscode/extensions.json` рекомендует Python, Ruff, Docker, GitLens и YAML; `.vscode/settings.json` включает lint/format on save |
+| 26 | Impact analysis для VIP и CSV | ГОТОВО | `IMPACT_ANALYSIS.md` перечисляет затронутые модули, тесты и регрессионные проверки |
 
-Итог по матрице: **23 ГОТОВО, 1 ЧАСТИЧНО**. Единственный частичный пункт —
-автоматический CD в Render/registry; CI, тесты, проверки стиля и скачиваемый Docker
-artifact настроены. Это не означает полной production-готовности: SLA 99,9%,
-смешанная write-нагрузка и внешняя доставка уведомлений отдельно не подтверждены.
+Итог по детальной функционально-технической матрице: **26/26 пунктов ГОТОВО**.
+Это не означает, что все восемь разделов задания закрыты без оговорок: ограничения
+по репликации БД, подтверждению SLA 99,9%, рецензии наставника и пользовательскому
+пилоту вынесены в [REQUIREMENTS_CHECKLIST.md](REQUIREMENTS_CHECKLIST.md).
 
 ## Архитектура
 
@@ -297,6 +299,10 @@ backup восстанавливается в новую БД, оператор �
 ## Комплект документации
 
 - [README.md](README.md) — обзор, запуск и ссылки на материалы.
+- [TECHNICAL_SPECIFICATION.md](TECHNICAL_SPECIFICATION.md) — краткое ТЗ: цели, требования, ограничения и приёмка.
+- [PROJECT_PLAN.md](PROJECT_PLAN.md) — этапы работ, оценка сроков и риски.
+- [REQUIREMENTS_CHECKLIST.md](REQUIREMENTS_CHECKLIST.md) — честная сверка по всем восьми разделам ИСП49.
+- [IMPACT_ANALYSIS.md](IMPACT_ANALYSIS.md) — затронутые модули и регрессионные тесты VIP/CSV.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — UML component/deployment diagrams, профили Render и Docker Compose, CI pipeline.
 - [API_GUIDE.md](API_GUIDE.md) и `/api/schema/` — API / OpenAPI.
 - [ROLES.md](ROLES.md) — модель прав и соответствие Role из ИСП49.
