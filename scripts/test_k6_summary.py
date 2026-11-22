@@ -1,13 +1,9 @@
 """Unit tests for the k6 summary normalizer."""
 
 import copy
-import sys
 import unittest
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from normalize_k6_summary import normalize_summary
+from scripts.normalize_k6_summary import normalize_summary
 
 
 def sample_summary():
