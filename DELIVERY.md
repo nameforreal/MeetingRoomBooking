@@ -166,7 +166,7 @@ flowchart LR
 конкурентной записи 200 RPS, удалённой сети, длительной утечки памяти или 1000
 одновременно активных HTTP-соединений. Не экстраполировать результаты на них.
 
-### CI: 1000 VU, run №53
+### CI: 1000 VU, run №59
 
 Изолированный GitHub Actions runner, Docker Compose test stack; профиль k6 выполнился
 до 1000 VU с 60-секундным плато. За весь прогон (~2 мин 50 с, включая ramp-up/down):
@@ -186,7 +186,7 @@ flowchart LR
 заявление о 100 RPS в среднем за весь прогон. Запросы только GET (`/api/rooms/` и
 `/rooms/`), без авторизации и записи бронирований. Проверка подтверждает именно
 изолированный CI-стенд, не production Render/Neon. JSON summary сохранён как artifact
-`mrb-k6-load-summary` в [workflow run №53](https://github.com/nameforreal/MeetingRoomBooking/actions/runs/44776170424).
+`mrb-k6-load-summary` в [workflow run №59](https://github.com/nameforreal/MeetingRoomBooking/actions/runs/44780885738).
 
 
 Воспроизведение только на стенде:
