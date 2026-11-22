@@ -179,12 +179,8 @@ def normalize_summary(summary):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--input", type=Path, default=Path("reports/k6-summary.json")
-    )
-    parser.add_argument(
-        "--output", type=Path, default=Path("reports/k6-summary-readable.json")
-    )
+    parser.add_argument("--input", type=Path, default=Path("reports/k6-summary.json"))
+    parser.add_argument("--output", type=Path, default=Path("reports/k6-summary-readable.json"))
     args = parser.parse_args()
 
     try:

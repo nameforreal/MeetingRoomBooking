@@ -44,9 +44,7 @@ class K6SummaryNormalizerTests(unittest.TestCase):
         self.assertEqual(normalized["requests"]["successful"], 100)
         self.assertEqual(normalized["checks"]["passed"], 100)
         self.assertEqual(normalized["checks"]["failed"], 0)
-        self.assertTrue(
-            all(item["passed"] for item in normalized["thresholds"].values())
-        )
+        self.assertTrue(all(item["passed"] for item in normalized["thresholds"].values()))
         self.assertFalse(normalized["thresholds"]["http_req_failed"]["k6_raw_exceeded"])
 
     def test_http_req_failed_rate_counters_are_interpreted_correctly(self):
