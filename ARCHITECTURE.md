@@ -121,4 +121,4 @@ end note
 - В локальном профиле Nginx обслуживает reverse proxy и static/media; в Render эту роль выполняют ingress и WhiteNoise.
 - GitHub Actions проверяет код и собирает контейнерный образ. Workflow не публикует образ в registry и не развёртывает приложение в Render.
 - Фоновой очереди задач (Celery/RQ) в проекте нет; обработка пользовательских операций синхронная.
-- Prometheus/Alertmanager доступны только в локальном демонстрационном профиле. Grafana dashboard и метрика использования DB connections пока не развёрнуты; это ограничение отражено в `DELIVERY.md`.
+- Prometheus, Alertmanager и Grafana dashboard доступны в локальном демонстрационном профиле. Метрики HTTP и PostgreSQL connections проверяются в CI; внешняя email/webhook-доставка alert оператору не настроена.
