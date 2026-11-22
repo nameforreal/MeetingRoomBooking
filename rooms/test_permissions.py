@@ -6,7 +6,7 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
-from rooms.models import Room, Booking
+from rooms.models import Role, Room, Booking
 from rooms.management.commands.setup_roles import ROLE_PERMISSIONS
 
 
@@ -19,6 +19,13 @@ class RoleTests(TestCase):
         start = (timezone.now() + timedelta(days=3)).replace(hour=10, minute=0, second=0, microsecond=0)
         self.booking = Booking.objects.create(room=self.room, user=self.member, start_time=start, end_time=start + timedelta(hours=1))
         self.api = APIClient()
+
+    def test_role_model_is_proxy_of_django_group(self):
+        role = Role.objects.get(name="Booking Viewers")
+        self.assertTrue(Role._meta.proxy)
+        self.assertIs(Role._meta.concrete_model, Group)
+        self.assertEqual(Role._meta.db_table, Group._meta.db_table)
+        self.assertEqual(role.pk, Group.objects.get(name=role.name).pk)
 
     def role(self, name=None):
         if name:
