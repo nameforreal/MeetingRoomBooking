@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from . import booking_operations
 
-LATEST = "0009_user_activity_guard"
+LATEST = "0010_role_proxy"
 
 
 class MigrationHelpers:
