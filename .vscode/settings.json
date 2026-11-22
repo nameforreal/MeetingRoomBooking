@@ -10,7 +10,7 @@
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
       "source.fixAll.ruff": "explicit",
-      "source.organizeImports": "explicit"
+      "source.organizeImports.ruff": "explicit"
     }
   }
 }
