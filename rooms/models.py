@@ -347,3 +347,29 @@ class AuditEvent(models.Model):
             models.CheckConstraint(condition=models.Q(source__in=["html", "api", "django_admin", "management", "system"]),
                                    name="audit_source_valid"),
         ]
+
+class Role(models.Model):
+    """Persistent role metadata linked to Django's permission-bearing Group."""
+
+    group = models.OneToOneField(
+        "auth.Group",
+        on_delete=models.PROTECT,
+        related_name="meetingroom_role",
+        verbose_name="Группа разрешений",
+    )
+    code = models.SlugField(max_length=100, unique=True, verbose_name="Код роли")
+    description = models.TextField(blank=True, verbose_name="Описание")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата изменения")
+
+    @property
+    def name(self):
+        return self.group.name
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = "Роль"
+        verbose_name_plural = "Роли"
+        ordering = ("group__name",)
