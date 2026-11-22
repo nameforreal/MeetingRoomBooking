@@ -4,6 +4,7 @@ from django.db import migrations, models
 import django.db.models.deletion
 from django.db.migrations.exceptions import IrreversibleError
 from django.utils.text import slugify
+from rooms.migration_safety import protect_booking_history
 
 
 def populate_role_metadata(apps, schema_editor):
@@ -28,6 +29,8 @@ def populate_role_metadata(apps, schema_editor):
 
 def protect_role_metadata(apps, schema_editor):
     Role = apps.get_model("rooms", "Role")
+    # Preflight lower migration guards before 0010 can be reversed.
+    protect_booking_history(apps, schema_editor)
     using = schema_editor.connection.alias
     if schema_editor.connection.vendor == "postgresql":
         table = schema_editor.quote_name(Role._meta.db_table)
