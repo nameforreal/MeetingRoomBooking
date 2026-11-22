@@ -200,6 +200,9 @@ class PostgreSQLMigrationSafetyTests(MigrationHelpers, TransactionTestCase):
         self.assert_activity_guard_works(user)
 
     def test_reverse_ddl_failure_rolls_back_trigger_and_recorder(self):
+        # Isolate 0009 so this test verifies its own transactional DDL rollback,
+        # not the intentionally non-atomic multi-migration plan from 0010 onward.
+        self.migrate("0009_user_activity_guard")
         user = get_user_model().objects.create_user(username="reverse-failure")
         applied = self.applied()
         editor = connection.SchemaEditorClass
