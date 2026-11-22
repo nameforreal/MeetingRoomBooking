@@ -1,4 +1,3 @@
-from django.contrib.auth.models import Group
 from django.db import models
 from .querysets import RoomQuerySet
 from django.db.models.deletion import ProtectedError
@@ -348,13 +347,3 @@ class AuditEvent(models.Model):
             models.CheckConstraint(condition=models.Q(source__in=["html", "api", "django_admin", "management", "system"]),
                                    name="audit_source_valid"),
         ]
-
-
-class Role(Group):
-    """Application-facing RBAC role backed by Django's built-in Group table."""
-
-    class Meta:
-        proxy = True
-        default_permissions = ()
-        verbose_name = "Роль"
-        verbose_name_plural = "Роли"
