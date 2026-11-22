@@ -34,6 +34,8 @@ FILES = [
     "config/test_delivery.py",
     "docker/gunicorn.conf.py",
     "scripts/verify_monitoring.py",
+    "scripts/normalize_k6_summary.py",
+    "scripts/test_k6_summary.py",
 ]
 
 if __name__ == "__main__":

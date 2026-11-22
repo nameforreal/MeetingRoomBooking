@@ -45,6 +45,8 @@ jobs:
             requirements-test.txt
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m pip check
+      - name: Unit tests for k6 summary normalization
+        run: python -m unittest scripts.test_k6_summary
       - run: python -m ruff check .
       - run: python scripts/check_format.py
       - name: Diff whitespace
@@ -102,13 +104,19 @@ jobs:
       - name: Verify PostgreSQL metrics, Grafana dashboard and Alertmanager
         run: python scripts/verify_monitoring.py --project mrb-ci
       - name: Run isolated 1000-VU read-only load test
+        id: k6_load_test
         run: docker compose --env-file docker/test.env -p mrb-ci -f compose.yaml -f compose.test.yaml -f compose.monitoring.yaml -f compose.load.yaml run --rm k6
+      - name: Normalize and validate k6 JSON summary
+        if: ${{ always() && steps.k6_load_test.outcome != 'skipped' }}
+        run: python scripts/normalize_k6_summary.py
       - name: Upload k6 load-test summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: mrb-k6-load-summary
-          path: reports/k6-summary.json
+          path: |
+            reports/k6-summary.json
+            reports/k6-summary-readable.json
           if-no-files-found: ignore
           retention-days: 14
       - name: Build production runtime image
