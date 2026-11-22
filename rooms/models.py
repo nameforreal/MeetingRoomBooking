@@ -348,6 +348,7 @@ class AuditEvent(models.Model):
                                    name="audit_source_valid"),
         ]
 
+
 class Role(models.Model):
     """Persistent role metadata linked to Django's permission-bearing Group."""
 
