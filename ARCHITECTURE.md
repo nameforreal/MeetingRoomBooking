@@ -15,7 +15,7 @@ component "HTTPS ingress Render\nили Nginx (local)" as edge
 component "Django + Gunicorn" as app
 component "HTML views / REST API / Django Admin" as ui
 component "Booking services\nrules / idempotency / audit" as domain
-database "PostgreSQL\nRoom / Booking / User\nGroups / Permissions\nAuditEvent / sessions" as db
+database "PostgreSQL\nRoom / Booking / User\nRole metadata / Groups / Permissions\nAuditEvent / sessions" as db
 component "Redis\nнеобязательный cache" as redis
 component "WhiteNoise (Render)\nили Nginx static/media (local)" as static
 component "Prometheus\nlocal profile" as prom
