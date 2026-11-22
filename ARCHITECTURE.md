@@ -15,7 +15,7 @@ component "HTTPS ingress Render\nили Nginx (local)" as edge
 component "Django + Gunicorn" as app
 component "HTML views / REST API / Django Admin" as ui
 component "Booking services\nrules / idempotency / audit" as domain
-database "PostgreSQL\nRoom / Booking / User\nGroups / Permissions\nAuditEvent / sessions" as db
+database "PostgreSQL\nRoom / Booking / User\nRole metadata / Groups / Permissions\nAuditEvent / sessions" as db
 component "Redis\nнеобязательный cache" as redis
 component "WhiteNoise (Render)\nили Nginx static/media (local)" as static
 component "Prometheus\nlocal profile" as prom
@@ -121,4 +121,4 @@ end note
 - В локальном профиле Nginx обслуживает reverse proxy и static/media; в Render эту роль выполняют ingress и WhiteNoise.
 - GitHub Actions проверяет код и собирает контейнерный образ. Workflow не публикует образ в registry и не развёртывает приложение в Render.
 - Фоновой очереди задач (Celery/RQ) в проекте нет; обработка пользовательских операций синхронная.
-- Prometheus/Alertmanager доступны только в локальном демонстрационном профиле. Grafana dashboard и метрика использования DB connections пока не развёрнуты; это ограничение отражено в `DELIVERY.md`.
+- Prometheus, Alertmanager и Grafana dashboard доступны в локальном демонстрационном профиле. Метрики HTTP и PostgreSQL connections проверяются в CI; внешняя email/webhook-доставка alert оператору не настроена.

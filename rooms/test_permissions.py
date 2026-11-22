@@ -6,7 +6,7 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
-from rooms.models import Room, Booking
+from rooms.models import Room, Booking, Role
 from rooms.management.commands.setup_roles import ROLE_PERMISSIONS
 
 
@@ -136,6 +136,15 @@ class RoleTests(TestCase):
         self.assertEqual(self.api.post("/api/rooms/", {"name": "blocked"}).status_code, 403)
         self.assertEqual(self.api.get("/api/rooms/?include_archived=true").status_code, 403)
 
+    def test_setup_creates_persistent_role_metadata(self):
+        self.assertEqual(Role.objects.count(), len(ROLE_PERMISSIONS))
+        for name in ROLE_PERMISSIONS:
+            role = Role.objects.select_related("group").get(group__name=name)
+            self.assertEqual(role.name, name)
+            self.assertTrue(role.code)
+            self.assertTrue(role.description)
+            self.assertTrue(role.group.permissions.exists())
+
     def test_setup_preserves_existing_settings(self):
         group = Group.objects.get(name="Booking Viewers")
         extra = Permission.objects.get(codename="export_booking")
@@ -143,6 +152,7 @@ class RoleTests(TestCase):
         group.user_set.add(self.staff)
         call_command("setup_roles", stdout=StringIO())
         self.assertEqual(Group.objects.filter(name__in=ROLE_PERMISSIONS).count(), 5)
+        self.assertEqual(Role.objects.count(), len(ROLE_PERMISSIONS))
         self.assertTrue(group.permissions.filter(pk=extra.pk).exists())
         self.assertTrue(group.user_set.filter(pk=self.staff.pk).exists())
         for name, expected in ROLE_PERMISSIONS.items():
